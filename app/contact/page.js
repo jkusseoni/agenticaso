@@ -24,20 +24,17 @@ export default function ContactPage() {
       </LegalSection>
 
       <LegalSection title="Support">
-        {email ? (
-          <p style={{ margin: 0 }}>
-            Email:{" "}
-            <a href={`mailto:${email}`} style={{ color: C.violetDeep, fontWeight: 600 }}>
-              {email}
-            </a>
-          </p>
-        ) : (
-          <p style={{ margin: 0 }}>
-            A public support email is not published in this deployment yet. Signed-in customers can manage subscriptions on{" "}
-            <Link href="/billing" style={{ color: C.violetDeep }}>Billing</Link>
-            . We respond to account-related requests sent from the email on your Agenticaso login.
-          </p>
-        )}
+        <p style={{ margin: "0 0 8px" }}>
+          Email:{" "}
+          <a href={`mailto:${email}`} style={{ color: C.violetDeep, fontWeight: 600 }}>
+            {email}
+          </a>
+        </p>
+        <p style={{ margin: 0 }}>
+          Signed-in customers can also manage Agenticaso Pro on{" "}
+          <Link href="/billing" style={{ color: C.violetDeep }}>Billing</Link>
+          . For billing questions, write from the email on your Agenticaso login when you can.
+        </p>
       </LegalSection>
 
       <LegalSection title="What to include">

@@ -29,8 +29,11 @@ export default function TermsPage() {
         Diagnoses and suggested fixes are generated from audit signals and may be incomplete or incorrect. Always review before publishing. Agenticaso does not claim SOC 2, ISO, HIPAA, or similar certifications unless separately documented in writing.
       </LegalSection>
       <LegalSection title="Plans and billing">
-        Free and paid entitlements are enforced server-side. The canonical Pro price is shown as {DEFAULT_PRO_PRICE_LABEL} unless you are shown a different amount by our billing configuration. Pro is a recurring monthly SaaS subscription. Signing in or verifying an email does not unlock Pro — paid access requires a verified successful payment. Cancelled subscriptions may retain Pro access until the end of an already-paid period when applicable; after expiry, Free limits apply while historical data is retained. Refunds and cancellations are described in our{" "}
+        Free and paid entitlements are enforced server-side. The canonical paid plan is <strong>Agenticaso Pro</strong> at {DEFAULT_PRO_PRICE_LABEL} unless you are shown a different amount at checkout. Pro is a recurring monthly SaaS subscription. Signing in or verifying an email does not unlock Pro — paid access requires a verified successful payment. Cancelled subscriptions may retain Pro access until the end of an already-paid period when applicable; after expiry, Free limits apply while historical data is retained. Refunds and cancellations are described in our{" "}
         <Link href="/refund-cancellation" style={{ color: C.violetDeep }}>Refund and Cancellation Policy</Link>.
+      </LegalSection>
+      <LegalSection title="Payments">
+        Payments for Agenticaso Pro are processed by Paddle. Where applicable, Paddle acts as the Merchant of Record: Paddle handles checkout, invoices, sales taxes where they apply, and the payment itself. Agenticaso does not collect or store full card numbers. Payment details are handled by Paddle under Paddle&apos;s terms and privacy policy.
       </LegalSection>
       <LegalSection title="Acceptable use">
         Do not abuse the APIs, scrape the product, reverse engineer in violation of law, interfere with other customers, or use the service to harm others. We may suspend accounts that threaten security or fair use.

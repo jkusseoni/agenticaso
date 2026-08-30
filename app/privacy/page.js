@@ -31,7 +31,7 @@ export default function PrivacyPage() {
         To run audits we send buyer questions and limited brand/site context to third-party AI providers (for example OpenAI/ChatGPT, Perplexity, and Google Gemini, via our configured gateways). Those providers process prompts according to their own terms and privacy policies. Do not submit secrets or personal data you do not want processed by AI providers.
       </LegalSection>
       <LegalSection title="Payments">
-        Paid plans are processed by our payment provider. We store subscription identifiers and status needed for entitlements. We do not store full card numbers on Agenticaso servers. Payment data is handled by the payment provider under their policies. Cancellation and refund handling is described in our{" "}
+        Paid plans are processed by Paddle. Where applicable, Paddle acts as the Merchant of Record. We store subscription identifiers and status needed for entitlements (for example plan, status, and period dates). We do not store full card numbers on Agenticaso servers. Card and other payment details are handled by Paddle under Paddle&apos;s policies. Cancellation and refund handling is described in our{" "}
         <Link href="/refund-cancellation" style={{ color: C.violetDeep }}>Refund and Cancellation Policy</Link>.
       </LegalSection>
       <LegalSection title="Cookies and analytics">
