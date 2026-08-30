@@ -1,0 +1,364 @@
+// AgenticASO Phase 3 — persistent intelligence schema (PostgreSQL / Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum QuestionCategory {
+  discovery
+  comparison
+  problem
+  alternative
+  purchase
+  category
+}
+
+enum AuditStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+/// One workspace per Clerk user (ownership root).
+model Workspace {
+  id           String         @id @default(cuid())
+  clerkUserId  String         @unique
+  email        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  websites       Website[]
+  subscription   Subscription?
+  usagePeriods   UsagePeriod[]
+  apiKeys        ApiKey[]
+  mcpRateBuckets McpRateBucket[]
+
+  @@index([clerkUserId])
+}
+
+model Website {
+  id          String          @id @default(cuid())
+  workspaceId String
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  domain      String
+  url         String
+  brandName   String?
+  category    String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  questions   BuyerQuestion[]
+  audits      Audit[]
+  monitorings Monitoring[]
+  alerts      Alert[]
+
+  @@unique([workspaceId, domain])
+  @@index([workspaceId])
+  @@index([domain])
+}
+
+/// Persisted buyer questions — reused for historical comparisons (not regenerated).
+model BuyerQuestion {
+  id        String           @id @default(cuid())
+  websiteId String
+  website   Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  question  String
+  category  QuestionCategory @default(category)
+  active    Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  audits    AuditQuestion[]
+
+  @@unique([websiteId, question])
+  @@index([websiteId, active])
+}
+
+model Audit {
+  id          String      @id @default(cuid())
+  websiteId   String
+  website     Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  status      AuditStatus @default(pending)
+  startedAt   DateTime    @default(now())
+  completedAt DateTime?
+
+  mentionShare        Float?
+  recommendationShare Float?
+  top3Share           Float?
+
+  /// { openai: ShareMetrics, perplexity: ShareMetrics, gemini: ShareMetrics }
+  providerMetrics Json?
+
+  foundScore            Float?
+  foundStatus           String?
+  understoodScore       Float?
+  understoodStatus      String?
+  recommendedScore      Float?
+  recommendedStatus     String?
+  boughtScore           Float?
+  boughtStatus          String?
+  overallScore          Float?
+  overallStatus         String?
+
+  /// Compact intelligence payload (perception summary etc.) — not a full raw dump.
+  intelligenceSummary Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  questions   AuditQuestion[]
+  aiTests     AiTest[]
+  competitors CompetitorSnapshot[]
+  perception  PerceptionSnapshot?
+  alerts      Alert[]
+  fixes       Fix[]
+
+  @@index([websiteId, status, completedAt])
+  @@index([websiteId, completedAt])
+}
+
+/// Persisted AI Action Engine snippets (JSON-LD, llms.txt, FAQ, meta tags).
+model Fix {
+  id          String    @id @default(cuid())
+  auditId     String
+  audit       Audit     @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  category    String
+  title       String
+  description String
+  codeSnippet String    @db.Text
+  language    String    @default("json")
+
+  isApplied   Boolean   @default(false)
+  appliedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([auditId, category])
+  @@index([auditId])
+  @@index([workspaceId])
+}
+
+model AuditQuestion {
+  auditId    String
+  questionId String
+  sortOrder  Int           @default(0)
+  audit      Audit         @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  question   BuyerQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([auditId, questionId])
+  @@index([questionId])
+}
+
+/// One provider × question execution. Raw answer retention is configurable.
+model AiTest {
+  id             String   @id @default(cuid())
+  auditId        String
+  audit          Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  provider       String
+  model          String
+  question       String
+  questionId     String?
+  /// Null when STORE_RAW_ANSWERS=false (privacy / cost).
+  answer         String?  @db.Text
+  storeAnswer    Boolean  @default(true)
+  brandMentioned Boolean  @default(false)
+  recommended    Boolean  @default(false)
+  position       Int?
+  competitors    Json?
+  citations      Json?
+  confidence     Float?
+  latencyMs      Int?
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([auditId, provider])
+  @@index([auditId, questionId])
+}
+
+model CompetitorSnapshot {
+  id                  String  @id @default(cuid())
+  auditId             String
+  audit               Audit   @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  name                String
+  mentions            Int     @default(0)
+  recommendations     Int     @default(0)
+  top3                Int     @default(0)
+  averagePosition     Float?
+  mentionShare        Float?
+  recommendationShare Float?
+  top3Share           Float?
+
+  @@unique([auditId, name])
+  @@index([auditId])
+}
+
+model PerceptionSnapshot {
+  id               String   @id @default(cuid())
+  auditId          String   @unique
+  audit            Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  brandThemes      Json
+  aiThemes         Json
+  missingThemes    Json
+  unexpectedThemes Json
+  method           String?
+  createdAt        DateTime @default(now())
+}
+
+enum MonitoringFrequency {
+  weekly
+  monthly
+}
+
+/// Continuous AI visibility monitoring for a website (one active config per site).
+model Monitoring {
+  id               String              @id @default(cuid())
+  websiteId        String              @unique
+  website          Website             @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  frequency        MonitoringFrequency @default(weekly)
+  active           Boolean             @default(true)
+  nextRunAt        DateTime
+  lastRunAt        DateTime?
+  /// Idempotency key for scheduled window (e.g. 2026-W33 or 2026-08). Manual runs use manual:<id>:<ts>.
+  lastScheduleKey  String?
+  lastStatus       String?
+  lastError        String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  alerts           Alert[]
+
+  @@index([active, nextRunAt])
+  @@index([websiteId])
+}
+
+model Alert {
+  id           String      @id @default(cuid())
+  websiteId    String
+  website      Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  auditId      String?
+  audit        Audit?      @relation(fields: [auditId], references: [id], onDelete: SetNull)
+  monitoringId String?
+  monitoring   Monitoring? @relation(fields: [monitoringId], references: [id], onDelete: SetNull)
+  type         String
+  severity     String
+  title        String
+  description  String
+  data         Json?
+  read         Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+
+  @@index([websiteId, createdAt])
+  @@index([websiteId, read])
+  @@index([monitoringId])
+}
+
+enum SubscriptionStatus {
+  active
+  trialing
+  past_due
+  cancelled
+  expired
+}
+
+/// Server-side subscription source of truth (Razorpay). Clerk `paid` is synced for legacy UI.
+model Subscription {
+  id                     String             @id @default(cuid())
+  workspaceId            String             @unique
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan                   String             @default("free")
+  status                 SubscriptionStatus @default(expired)
+  provider               String             @default("razorpay")
+  providerCustomerId     String?
+  providerSubscriptionId String?            @unique
+  providerPaymentLinkId  String?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  /// Latest Paddle `occurred_at` applied to this row. Older webhooks must not overwrite state.
+  lastPaddleEventAt      DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@index([status])
+  @@index([providerSubscriptionId])
+}
+
+/// Monthly usage counters per workspace billing period.
+model UsagePeriod {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  periodStart     DateTime
+  periodEnd       DateTime
+  aiTests         Int       @default(0)
+  /// Soft-hold for in-flight audits (prevents concurrent double-spend of allowance).
+  aiTestsReserved Int       @default(0)
+  audits          Int       @default(0)
+  monitoringRuns  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([workspaceId, periodStart])
+  @@index([workspaceId, periodEnd])
+}
+
+/// Idempotent billing webhook intake.
+model BillingWebhookEvent {
+  id          String   @id
+  provider    String
+  type        String
+  processedAt DateTime @default(now())
+  payload     Json?
+  /// False until apply succeeds or the event is permanently rejected (wrong price / identity).
+  applied     Boolean  @default(true)
+
+  @@index([provider, type])
+}
+
+enum ApiKeyStatus {
+  active
+  revoked
+}
+
+/// MCP API keys for a workspace. Store SHA-256+pepper hashes only — never plaintext.
+model ApiKey {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  /// First 12 characters of the secret, for UI display (e.g. aso_live_ab12…).
+  prefix      String
+  /// HMAC-SHA256(MCP_KEY_PEPPER, plaintext). Unique. Never log or return this.
+  keyHash     String       @unique
+  status      ApiKeyStatus @default(active)
+  /// Server-assigned scopes. V1 is always ["mcp"].
+  scopes      Json
+  createdAt   DateTime     @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  expiresAt   DateTime?
+
+  @@index([workspaceId, status])
+  @@index([prefix])
+  @@index([workspaceId, createdAt])
+}
+
+/// Durable per-workspace MCP action counters (hourly windows).
+model McpRateBucket {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  action      String
+  windowStart DateTime
+  count       Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, action, windowStart])
+  @@index([workspaceId, action])
+}
