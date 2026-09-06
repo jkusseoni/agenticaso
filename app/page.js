@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from "react";
 import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { DEFAULT_PRO_PRICE_LABEL } from "@/lib/billing/plans";
+import { SiteFooter } from "@/components/site-footer";
 
 /*
   Agenticaso — launch-ready single-page app (landing + live agent checker)
@@ -182,6 +184,7 @@ function Nav({ onCTA }) {
       <div className="wrap" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 66 }}>
         <Logo />
         <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: 26, fontSize: 14.5, color: C.muted }}>
+          <a href="/dashboard" style={{ color: C.muted, textDecoration: "none" }}>Dashboard</a>
           <a href="/pricing" style={{ color: C.muted, textDecoration: "none" }}>Pricing</a>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -412,24 +415,53 @@ function FinalCTA({ onCTA }) {
 }
 function Footer() {
   return (
-    <footer style={{ borderTop: `1px solid ${C.border}`, background: "#fff" }}>
-      <div className="wrap" style={{ padding: "26px 24px", display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "space-between", alignItems: "center" }}>
+    <div>
+      <div className="wrap" style={{ padding: "18px 24px 0", display: "flex", justifyContent: "flex-start" }}>
         <Logo />
-        <div style={{ fontSize: 12, color: C.muted, maxWidth: 560, lineHeight: 1.5 }}>Agenticaso · ASO = Agentic Search Optimization. Stats: Adobe, OpenAI, Gartner. Scan is a prototype — wire real checks in your backend.</div>
       </div>
-    </footer>
+      <SiteFooter
+        extra={
+          <div style={{ fontSize: 12, color: C.muted, maxWidth: 420, lineHeight: 1.5 }}>
+            Agenticaso · ASO = Agentic Search Optimization. Marketing stats cite public industry reports; your audit results are specific to sites you submit.
+          </div>
+        }
+      />
+    </div>
   );
 }
 
 /* shared bits */
 function AIVisibility({ report }) {
-  const { isSignedIn, user } = useUser();
-  const isPaid = user?.publicMetadata?.paid === true;
+  const { isSignedIn } = useUser();
+  const [isPaid, setIsPaid] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isSignedIn) {
+      setIsPaid(false);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/billing/status")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setIsPaid(Boolean(d.billing?.isPaid));
+      })
+      .catch(() => {
+        if (!cancelled) setIsPaid(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn]);
 
   const [status, setStatus] = React.useState("idle"); // idle | running | done | error
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState("");
   const [tick, setTick] = React.useState(0);
+  const [v2Status, setV2Status] = React.useState("idle"); // idle | running | done | error
+  const [v2Data, setV2Data] = React.useState(null);
+  const [v2Err, setV2Err] = React.useState("");
+  const [history, setHistory] = React.useState(null); // comparison payload
 
   const V = { violet: "#5A47F5", violetDeep: "#3A2AC0", teal: "#0FB88E", amber: "#F5A623", coral: "#FF6A5A", ink: "#15152B", muted: "#5B5B78", border: "#E7E8F3", dark: "#111024" };
   const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -463,6 +495,31 @@ function AIVisibility({ report }) {
     } catch { setErr("Something went wrong. Try again."); setStatus("error"); }
   };
 
+  const runV2 = async () => {
+    setV2Status("running"); setV2Err(""); setV2Data(null); setHistory(null);
+    try {
+      const res = await fetch("/api/visibility/v2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: report?.clean }),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) { setV2Err(d.error || "Multi-AI check failed."); setV2Status("error"); return; }
+      setV2Data(d); setV2Status("done");
+
+      // Minimal Phase 3 history check (dev)
+      const auditId = d.persistence?.auditId || d.audit?.id;
+      const previousId = d.persistence?.previousAuditId || d.audit?.previousAuditId;
+      if (auditId && previousId) {
+        try {
+          const cmp = await fetch(`/api/audits/${auditId}/compare/${previousId}`);
+          const cj = await cmp.json();
+          if (cmp.ok) setHistory(cj);
+        } catch { /* ignore history errors in UI */ }
+      }
+    } catch { setV2Err("Something went wrong. Try again."); setV2Status("error"); }
+  };
+
   const shell = { borderRadius: 20, padding: 26, marginBottom: 18, border: `1px solid ${V.border}` };
 
   // ---------- LOCKED (not signed in / not paid / idle) ----------
@@ -484,7 +541,9 @@ function AIVisibility({ report }) {
             <button style={ctaBtn(V)}>Sign in to unlock →</button>
           </SignInButton>
         ) : !isPaid ? (
-          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>Upgrade to Pro — ₹499/mo →</a>
+          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>
+            Upgrade to Pro — {DEFAULT_PRO_PRICE_LABEL} →
+          </a>
         ) : (
           <button onClick={run} style={ctaBtn(V)}>Run AI visibility check →</button>
         )}
@@ -563,6 +622,69 @@ function AIVisibility({ report }) {
       <button onClick={() => { setStatus("idle"); setData(null); }} style={{ marginTop: 18, background: "none", border: `1.5px solid ${V.border}`, borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13.5, color: V.ink }}>
         Run again
       </button>
+
+      {/* Minimal multi-AI (v2) exposure for Phase 1 — no dashboard redesign */}
+      <div style={{ marginTop: 22, paddingTop: 18, borderTop: `1px solid ${V.border}` }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: V.muted, letterSpacing: 0.4, marginBottom: 8 }}>MULTI-AI AUDIT · OPENAI · PERPLEXITY · GEMINI</div>
+        {v2Status === "idle" || v2Status === "error" ? (
+          <>
+            <button onClick={runV2} style={{ background: "none", border: `1.5px solid ${V.border}`, borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13.5, color: V.ink }}>
+              Run cross-AI provider check →
+            </button>
+            {v2Err && <div style={{ color: V.coral, fontSize: 13, marginTop: 8 }}>{v2Err}</div>}
+          </>
+        ) : null}
+        {v2Status === "running" && <div style={{ fontSize: 13.5, color: V.muted }}>Querying OpenAI, Perplexity, and Gemini independently…</div>}
+        {v2Status === "done" && v2Data && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {v2Data.intelligence && (
+              <div style={{ background: "#F7F7FC", border: `1px solid ${V.border}`, borderRadius: 12, padding: 14, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: V.muted, letterSpacing: 0.4, marginBottom: 10 }}>AI SHARE OF VOICE · DEV</div>
+                <div style={{ fontSize: 12.5, color: V.muted, marginBottom: 10 }}>
+                  Persistence: {v2Data.persistence?.saved ? `saved (${v2Data.persistence.auditId})` : v2Data.persistence?.skipped ? "skipped (DB not configured)" : v2Data.persistence?.error || "not saved"}
+                  {v2Data.persistence?.previousAuditId ? ` · previous: ${v2Data.persistence.previousAuditId}` : ""}
+                </div>
+                <div style={{ display: "grid", gap: 6, fontSize: 13, color: V.ink, marginBottom: 12 }}>
+                  <div>Overall mention: <b>{v2Data.intelligence.shareOfVoice?.mentionShare ?? 0}%</b> · recommendation: <b>{v2Data.intelligence.shareOfVoice?.recommendationShare ?? 0}%</b> · top3: <b>{v2Data.intelligence.shareOfVoice?.top3Share ?? 0}%</b></div>
+                  <div>ChatGPT: {v2Data.intelligence.providers?.openai?.mentionShare ?? 0}% mention · {v2Data.intelligence.providers?.openai?.recommendationShare ?? 0}% rec · {v2Data.intelligence.providers?.openai?.top3Share ?? 0}% top3</div>
+                  <div>Perplexity: {v2Data.intelligence.providers?.perplexity?.mentionShare ?? 0}% mention · {v2Data.intelligence.providers?.perplexity?.recommendationShare ?? 0}% rec · {v2Data.intelligence.providers?.perplexity?.top3Share ?? 0}% top3</div>
+                  <div>Gemini: {v2Data.intelligence.providers?.gemini?.mentionShare ?? 0}% mention · {v2Data.intelligence.providers?.gemini?.recommendationShare ?? 0}% rec · {v2Data.intelligence.providers?.gemini?.top3Share ?? 0}% top3</div>
+                </div>
+                {history?.comparison?.delta?.share && (
+                  <div style={{ fontSize: 12.5, color: V.ink, marginBottom: 10 }}>
+                    vs previous — mention Δ {history.comparison.delta.share.mentionShare?.delta ?? "n/a"} · rec Δ {history.comparison.delta.share.recommendationShare?.delta ?? "n/a"} · top3 Δ {history.comparison.delta.share.top3Share?.delta ?? "n/a"}
+                  </div>
+                )}
+                {v2Data.intelligence.competitors?.list?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: V.muted, letterSpacing: 0.4, marginBottom: 6 }}>TOP COMPETITORS</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {v2Data.intelligence.competitors.list.slice(0, 5).map((c) => (
+                        <span key={c.name} style={{ fontSize: 12.5, fontWeight: 500, background: "#fff", border: `1px solid ${V.border}`, borderRadius: 999, padding: "5px 11px", color: V.ink }}>
+                          {c.name} <span style={{ color: V.muted, fontSize: 11 }}>×{c.mentions}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {(v2Data.byQuestion || []).slice(0, 2).map((row, i) => (
+              <div key={i}>
+                <div style={{ fontSize: 13, color: V.ink, marginBottom: 6 }}>&quot;{row.query}&quot;</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(row.providers || []).map((p) => (
+                    <span key={p.provider} style={{ fontSize: 12.5, fontWeight: 500, background: "#F3F3FA", border: `1px solid ${V.border}`, borderRadius: 999, padding: "6px 12px", color: V.ink }}>
+                      {p.provider}{p.error ? ` · error` : p.brandMentioned ? (p.recommended ? " · recommended" : " · mentioned") : " · not mentioned"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button onClick={() => { setV2Status("idle"); setV2Data(null); setHistory(null); }} style={{ alignSelf: "start", background: "none", border: "none", color: V.muted, fontSize: 12.5, cursor: "pointer", padding: 0 }}>Clear multi-AI results</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
