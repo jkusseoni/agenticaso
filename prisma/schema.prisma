@@ -38,6 +38,7 @@ model Workspace {
   usagePeriods   UsagePeriod[]
   apiKeys        ApiKey[]
   mcpRateBuckets McpRateBucket[]
+  funnelEvents   FunnelEvent[]
 
   @@index([clerkUserId])
 }
@@ -314,6 +315,19 @@ model UsagePeriod {
 
   @@unique([workspaceId, periodStart])
   @@index([workspaceId, periodEnd])
+}
+
+/// Lightweight conversion-funnel counts. No email, Clerk id, IP, or payment details.
+model FunnelEvent {
+  id          String     @id @default(cuid())
+  event       String
+  sessionId   String?
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+
+  @@index([event, createdAt])
+  @@index([workspaceId, event])
 }
 
 /// Idempotent billing webhook intake.
