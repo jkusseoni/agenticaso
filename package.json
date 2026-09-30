@@ -12,7 +12,11 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "test": "node --test lib/ai/__tests__/multi-ai.test.js lib/ai/__tests__/intelligence.test.js lib/ai/__tests__/generate-fix.test.js lib/db/__tests__/persistence.test.js lib/dashboard/__tests__/dashboard.test.js lib/ai/diagnosis/__tests__/diagnosis.test.js lib/monitoring/__tests__/monitoring.test.js lib/billing/__tests__/billing.test.js lib/billing/__tests__/phase71.test.js lib/billing/__tests__/entitlement-source.test.js lib/billing/__tests__/paddle.test.js lib/site/__tests__/legal-pages.test.js lib/mcp/__tests__/keys.test.js lib/mcp/__tests__/server.test.js lib/mcp/__tests__/tools.test.js lib/mcp/__tests__/visibility-audit.test.js lib/mcp/__tests__/hardening.test.js lib/mcp/__tests__/smoke.test.js",
+    "growth": "node lib/growth/eval/qualification-eval.js",
+    "growth:eval": "node lib/growth/eval/qualification-eval.js",
+    "growth:dogfood-seed": "node scripts/seed-growth-dogfood.js",
+    "test": "node --test lib/ai/__tests__/multi-ai.test.js lib/ai/__tests__/intelligence.test.js lib/ai/__tests__/generate-fix.test.js lib/ai/__tests__/aicredits.test.js lib/db/__tests__/persistence.test.js lib/dashboard/__tests__/dashboard.test.js lib/ai/diagnosis/__tests__/diagnosis.test.js lib/monitoring/__tests__/monitoring.test.js lib/billing/__tests__/billing.test.js lib/billing/__tests__/phase71.test.js lib/billing/__tests__/entitlement-source.test.js lib/billing/__tests__/paddle.test.js lib/site/__tests__/legal-pages.test.js lib/mcp/__tests__/keys.test.js lib/mcp/__tests__/server.test.js lib/mcp/__tests__/tools.test.js lib/mcp/__tests__/visibility-audit.test.js lib/mcp/__tests__/hardening.test.js lib/mcp/__tests__/smoke.test.js lib/growth/__tests__/woocommerce.test.js lib/growth/__tests__/commerce-signals.test.js lib/growth/__tests__/extract-contacts.test.js lib/growth/__tests__/evidence-quality.test.js lib/growth/__tests__/research-collector.test.js lib/growth/__tests__/root-reachability.test.js lib/growth/__tests__/research-retry.test.js lib/growth/__tests__/research-refresh.test.js lib/growth/__tests__/evidence-pack.test.js lib/growth/__tests__/qualification-contract.test.js lib/growth/__tests__/qualification-reasoner.test.js lib/growth/__tests__/qualification-critic.test.js lib/growth/__tests__/qualification-eval.test.js lib/growth/__tests__/qualification-context.test.js lib/growth/__tests__/persistence.test.js lib/growth/__tests__/orchestrator.test.js lib/growth/__tests__/worker.test.js lib/growth/__tests__/postgres.integration.test.js lib/growth/__tests__/dogfood-seed.test.js lib/growth/__tests__/dogfood-env.test.js",
+    "test:growth-pg": "node scripts/run-growth-pg-tests.js",
     "typecheck": "node -e \"console.log('No TypeScript in this project (JS + JSDoc). Skipping tsc.')\""
   },
   "dependencies": {
@@ -29,6 +33,8 @@
     "resend": "^6.18.1"
   },
   "devDependencies": {
+    "@embedded-postgres/windows-x64": "^18.4.0-beta.17",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "prisma": "^6.19.3"

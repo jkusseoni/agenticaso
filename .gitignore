@@ -34,6 +34,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# generated eval reports (may contain model text)
+growth-eval-report.json
+.growth-pg-data
+
 # vercel
 .vercel
 

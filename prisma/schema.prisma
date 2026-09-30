@@ -33,11 +33,12 @@ model Workspace {
   email        String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
-  websites       Website[]
-  subscription   Subscription?
-  usagePeriods   UsagePeriod[]
-  apiKeys        ApiKey[]
-  mcpRateBuckets McpRateBucket[]
+  websites        Website[]
+  subscription    Subscription?
+  usagePeriods    UsagePeriod[]
+  apiKeys         ApiKey[]
+  mcpRateBuckets  McpRateBucket[]
+  growthCampaigns GrowthCampaign[]
 
   @@index([clerkUserId])
 }
@@ -361,4 +362,259 @@ model McpRateBucket {
 
   @@unique([workspaceId, action, windowStart])
   @@index([workspaceId, action])
+}
+
+/// Growth acquisition campaign (not a Website; not monitored/audited).
+enum GrowthCampaignStatus {
+  draft
+  active
+  paused
+  completed
+  archived
+}
+
+enum GrowthProspectLifecycle {
+  candidate
+  research_pending
+  researching
+  researched
+  qualification_pending
+  qualifying
+  qualified
+  needs_review
+  rejected
+  failed
+}
+
+enum GrowthQualificationDecision {
+  strong_fit
+  possible_fit
+  weak_fit
+  not_fit
+  insufficient_evidence
+}
+
+/// Trust/review outcome. Distinct from qualification decision and lifecycle.
+enum GrowthReviewState {
+  accepted
+  needs_review
+  rejected
+}
+
+enum GrowthJobType {
+  research
+  qualify
+  critic
+}
+
+enum GrowthJobStatus {
+  pending
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+enum GrowthReasonType {
+  observation
+  inference
+}
+
+enum GrowthProducedBy {
+  llm
+  deterministic
+}
+
+model GrowthCampaign {
+  id          String               @id @default(cuid())
+  workspaceId String
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  status      GrowthCampaignStatus @default(draft)
+
+  productName        String
+  productUrl         String
+  productDescription String        @db.VarChar(500)
+  goal               String
+  targetPlatform     String
+  /// Allowed SIGNAL_KEYS only. Not prospect evidence.
+  desiredSignals     Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prospects GrowthProspect[]
+  jobs      GrowthJob[]
+
+  @@index([workspaceId, status])
+}
+
+model GrowthProspect {
+  id         String         @id @default(cuid())
+  campaignId String
+  campaign   GrowthCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  originalUrl     String
+  normalizedUrl   String
+  canonicalDomain String
+
+  platformStatus String?
+  lifecycleState GrowthProspectLifecycle @default(candidate)
+
+  latestQualificationDecision GrowthQualificationDecision?
+  latestReviewState           GrowthReviewState?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidence       GrowthEvidence[]
+  qualifications GrowthQualification[]
+  jobs           GrowthJob[]
+
+  @@unique([campaignId, canonicalDomain])
+  @@index([campaignId, lifecycleState])
+  @@index([canonicalDomain])
+}
+
+model GrowthJob {
+  id         String          @id @default(cuid())
+  campaignId String
+  campaign   GrowthCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  prospectId String?
+  prospect   GrowthProspect? @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  type     GrowthJobType
+  status   GrowthJobStatus @default(pending)
+  attempts Int             @default(0)
+
+  availableAt DateTime  @default(now())
+  claimedAt   DateTime?
+  leaseExpiresAt DateTime?
+  finishedAt  DateTime?
+
+  lastErrorCode    String? @db.VarChar(80)
+  lastErrorMessage String? @db.VarChar(300)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidence       GrowthEvidence[]
+  qualifications GrowthQualification[]
+
+  @@index([status, availableAt])
+  @@index([status, leaseExpiresAt])
+  @@index([campaignId, prospectId])
+  @@index([prospectId, type, status])
+}
+
+/// Sanitized evidence row for one research run. EV-001 is unique per run, not globally.
+/// jobId is operational only: deleting a job must not destroy qualification-supporting evidence.
+model GrowthEvidence {
+  id         String          @id @default(cuid())
+  prospectId String
+  prospect   GrowthProspect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  jobId      String?
+  job        GrowthJob?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  /// Stable research-run identity (copied from the research job id at persist time).
+  runId      String
+
+  packEvidenceId     String
+  claim              String  @db.VarChar(280)
+  sourceUrl          String?
+  sourceType         String?
+  observedData       String? @db.VarChar(280)
+  confidence         Float?
+  verificationStatus String?
+  extractor          String?
+
+  createdAt DateTime @default(now())
+
+  reasonLinks GrowthQualificationReasonEvidence[]
+
+  @@unique([prospectId, runId, packEvidenceId])
+  @@index([prospectId, runId])
+  @@index([jobId])
+}
+
+model GrowthQualification {
+  id         String          @id @default(cuid())
+  prospectId String
+  prospect   GrowthProspect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  jobId      String?
+  job        GrowthJob?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  decision GrowthQualificationDecision
+  summary  String                      @db.VarChar(600)
+
+  producedBy     GrowthProducedBy @default(llm)
+  shortCircuited Boolean          @default(false)
+  structuralOk   Boolean          @default(true)
+
+  reasonerModel    String?
+  reasonerProvider String?
+  /// Uncertainties are missing-info notes; citations optional. JSON avoids a sparse join table.
+  uncertainties    Json
+
+  evidencePackVersion          Int @default(1)
+  qualificationContractVersion Int @default(1)
+  reasonerPromptVersion        Int @default(1)
+  schemaVersion                Int @default(1)
+
+  reasonerCallCount Int?
+  promptTokens      Int?
+  completionTokens  Int?
+  totalTokens       Int?
+
+  createdAt DateTime @default(now())
+
+  reasons GrowthQualificationReason[]
+  critic  GrowthCriticReview?
+
+  @@index([prospectId, createdAt])
+  @@unique([jobId])
+}
+
+model GrowthQualificationReason {
+  id              String              @id @default(cuid())
+  qualificationId String
+  qualification   GrowthQualification @relation(fields: [qualificationId], references: [id], onDelete: Cascade)
+  type            GrowthReasonType
+  statement       String              @db.VarChar(400)
+  sortOrder       Int                 @default(0)
+
+  evidenceLinks GrowthQualificationReasonEvidence[]
+
+  @@index([qualificationId, sortOrder])
+}
+
+model GrowthQualificationReasonEvidence {
+  reasonId   String
+  evidenceId String
+  reason     GrowthQualificationReason @relation(fields: [reasonId], references: [id], onDelete: Cascade)
+  evidence   GrowthEvidence            @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([reasonId, evidenceId])
+  @@index([evidenceId])
+}
+
+model GrowthCriticReview {
+  id              String              @id @default(cuid())
+  qualificationId String              @unique
+  qualification   GrowthQualification @relation(fields: [qualificationId], references: [id], onDelete: Cascade)
+
+  policyVerdict String?
+  llmVerdict    String?
+  finalVerdict  String
+  reviewState   GrowthReviewState
+
+  criticModel    String?
+  criticProvider String?
+  items          Json?
+
+  criticPromptVersion Int  @default(1)
+  promptTokens        Int?
+  completionTokens    Int?
+  totalTokens         Int?
+
+  createdAt DateTime @default(now())
 }
