@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { requireClerkUser, mapDbError } from "@/lib/db/auth-gate";
 import { PLAN_IDS, formatPlanPriceLabel, PRICING } from "@/lib/billing";
 import {
@@ -6,6 +7,8 @@ import {
   getPaddleEnvironment,
   getPaddleProPriceId,
 } from "@/lib/billing/paddle.js";
+import { recordTrustedCheckoutStart } from "@/lib/growth/checkout-start.js";
+import { readFunnelSession } from "@/lib/growth/session.js";
 
 export const runtime = "nodejs";
 
@@ -75,6 +78,17 @@ export async function POST(req) {
     if (!workspace?.id) {
       return Response.json({ error: "Workspace unavailable." }, { status: 503 });
     }
+
+    let sessionId = null;
+    try {
+      sessionId = readFunnelSession(await cookies());
+    } catch (e) {
+      console.error("funnel session read failed:", e?.code || "error");
+    }
+    await recordTrustedCheckoutStart({
+      workspaceId: workspace.id,
+      sessionId,
+    });
 
     const created = await createPaddleCheckoutTransaction({
       workspaceId: workspace.id,
