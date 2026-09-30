@@ -6,6 +6,7 @@ import Link from "next/link";
 import { DEFAULT_PRO_PRICE_LABEL } from "@/lib/billing/plans";
 import { SiteFooter } from "@/components/site-footer";
 import { openPaddleOverlay, loadPaddle } from "@/components/billing/paddle-checkout";
+import { track } from "@vercel/analytics";
 
 const C = {
   paper: "#F5F6FB", ink: "#15152B", muted: "#5B5B78",
@@ -61,6 +62,10 @@ export default function PricingPage() {
     setBusy(true);
     setError("");
     try {
+      track("pro_checkout_started", {
+        source: "pricing_page",
+        plan: "pro",
+      });
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
