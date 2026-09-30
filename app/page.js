@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from "react";
 import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { track } from "@vercel/analytics";
 
 /*
   Agenticaso — launch-ready single-page app (landing + live agent checker)
@@ -232,6 +233,12 @@ function Hero({ url, setUrl, run, inputRef }) {
               href={CHATGPT_PLUGIN_URL}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                track("chatgpt_plugin_cta_click", {
+                  location: "homepage_hero",
+                  destination: "chatgpt_plugin",
+                });
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
