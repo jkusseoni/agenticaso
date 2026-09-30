@@ -26,6 +26,7 @@ const C = {
 };
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const BODY = "'Inter', system-ui, sans-serif";
+const CHATGPT_PLUGIN_URL = "https://chatgpt.com/plugins/plugin_asdk_app_6aa78c2ecb7c8191b1830cbf6cadbb16";
 
 const LADDER = [
   { k: "SEO", d: "Rank in blue links", old: true },
@@ -223,6 +224,28 @@ function Hero({ url, setUrl, run, inputRef }) {
             <button className="btn" onClick={run} style={{ ...btn(true), whiteSpace: "nowrap", padding: "13px 20px" }}>Run agent check</button>
           </div>
           <div style={{ fontSize: 12.5, color: C.muted }}>Free · checks 4 things agents care about · ~15 seconds</div>
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 7 }}>
+              Agenticaso is now available in ChatGPT
+            </div>
+            <a
+              href={CHATGPT_PLUGIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: C.violetDeep,
+                fontSize: 14,
+                fontWeight: 700,
+                textDecoration: "none",
+                padding: "8px 0"
+              }}
+            >
+              Scan Free in ChatGPT ↗
+            </a>
+          </div>
         </div>
         <AgentActionCard />
       </div>
