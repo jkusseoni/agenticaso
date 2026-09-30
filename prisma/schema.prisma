@@ -282,6 +282,14 @@ model Subscription {
   cancelAtPeriodEnd      Boolean            @default(false)
   /// Latest Paddle `occurred_at` applied to this row. Older webhooks must not overwrite state.
   lastPaddleEventAt      DateTime?
+  /// First time this workspace gained verified Paddle Pro. Write-once. Not an entitlement input.
+  firstPaidAt            DateTime?
+  /// Paddle transaction id for that first conversion. Filled once; may arrive after firstPaidAt.
+  firstPaidTransactionId String?            @unique
+  /// Minor units from transaction.completed details.totals.grand_total, when that payload parses.
+  firstPaidAmount        Int?
+  /// Currency code from that same totals object.
+  firstPaidCurrency      String?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
