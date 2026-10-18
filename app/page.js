@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from "react";
 import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { billingRequestKey, deriveBillingView, ownedRunView, parseBillingStatus } from "@/lib/billing/client-view.js";
 import { track } from "@vercel/analytics";
 import { notifyChatgptPluginClick } from "@/lib/growth/homepage-click";
 
@@ -455,12 +456,34 @@ function Footer() {
 
 /* shared bits */
 function AIVisibility({ report }) {
-  const { isSignedIn, user } = useUser();
-  const isPaid = user?.publicMetadata?.paid === true;
+  const { isLoaded, isSignedIn, user } = useUser();
+  const userId = isLoaded && isSignedIn ? user?.id || null : null;
+  const [billingAttempt, setBillingAttempt] = React.useState(0);
+  const [billingResult, setBillingResult] = React.useState(null);
 
-  const [status, setStatus] = React.useState("idle"); // idle | running | done | error
-  const [data, setData] = React.useState(null);
-  const [err, setErr] = React.useState("");
+  React.useEffect(() => {
+    const key = billingRequestKey(userId, billingAttempt);
+    if (!key) return;
+    const ctrl = new AbortController();
+    fetch("/api/billing/status", { cache: "no-store", signal: ctrl.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Billing status failed");
+        return res.json();
+      })
+      .then((body) => {
+        if (!ctrl.signal.aborted) setBillingResult({ key, error: false, ...parseBillingStatus(body) });
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setBillingResult({ key, error: true, isPaid: false, priceLabel: null });
+      });
+    return () => ctrl.abort();
+  }, [userId, billingAttempt]);
+
+  const billing = deriveBillingView({ isLoaded, isSignedIn, userId, attempt: billingAttempt, result: billingResult });
+
+  // idle | running | done | error — scoped to the user who started the run
+  const [runState, setRunState] = React.useState({ owner: null, status: "idle", data: null, err: "" });
+  const { status, data, err } = ownedRunView(runState, userId);
   const [tick, setTick] = React.useState(0);
 
   const V = { violet: "#5A47F5", violetDeep: "#3A2AC0", teal: "#0FB88E", amber: "#F5A623", coral: "#FF6A5A", ink: "#15152B", muted: "#5B5B78", border: "#E7E8F3", dark: "#111024" };
@@ -482,17 +505,22 @@ function AIVisibility({ report }) {
   ];
 
   const run = async () => {
-    setStatus("running"); setErr(""); setTick(0);
+    const owner = userId;
+    if (!owner) return;
+    const settle = (next) => setRunState((cur) => (cur.owner === owner ? { owner, ...next } : cur));
+    setRunState({ owner, status: "running", data: null, err: "" });
+    setTick(0);
     try {
       const res = await fetch("/api/visibility", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: report?.clean }),
       });
-      const d = await res.json();
-      if (!res.ok || d.error) { setErr(d.error || "Check failed."); setStatus("error"); return; }
-      setData(d); setStatus("done");
-    } catch { setErr("Something went wrong. Try again."); setStatus("error"); }
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 402) setBillingAttempt((a) => a + 1);
+      if (!res.ok || d.error) { settle({ status: "error", data: null, err: d.error || "Check failed." }); return; }
+      settle({ status: "done", data: d, err: "" });
+    } catch { settle({ status: "error", data: null, err: "Something went wrong. Try again." }); }
   };
 
   const shell = { borderRadius: 20, padding: 26, marginBottom: 18, border: `1px solid ${V.border}` };
@@ -511,12 +539,18 @@ function AIVisibility({ report }) {
           We ask ChatGPT and Perplexity 5 real buyer questions in your category and measure how often <b>{report?.clean}</b> gets recommended vs your competitors. This is the number that decides whether agents send you sales.
         </p>
 
-        {!isSignedIn ? (
+        {billing.state === "signed_out" ? (
           <SignInButton mode="modal">
             <button style={ctaBtn(V)}>Sign in to unlock →</button>
           </SignInButton>
-        ) : !isPaid ? (
-          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>Upgrade to Pro — ₹499/mo →</a>
+        ) : billing.state === "loading" ? (
+          <button disabled style={ctaBtn(V)}>Checking subscription…</button>
+        ) : billing.state === "error" ? (
+          <button onClick={() => setBillingAttempt((a) => a + 1)} style={ctaBtn(V)}>Retry subscription check</button>
+        ) : !billing.isPaid ? (
+          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>
+            {billing.priceLabel ? `Upgrade to Pro — ${billing.priceLabel} →` : "Upgrade to Pro →"}
+          </a>
         ) : (
           <button onClick={run} style={ctaBtn(V)}>Run AI visibility check →</button>
         )}
@@ -568,14 +602,16 @@ function AIVisibility({ report }) {
       <p style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 16, lineHeight: 1.35, letterSpacing: -0.2, marginBottom: 18 }}>{d.verdict}</p>
       {bar("In live AI search (Perplexity)", d.webSoV, "What agents recommend when they search the web right now")}
       {bar("In AI memory (ChatGPT)", d.memSoV, "What the model recommends from what it already knows")}
+      {d.partial && <div style={{ fontSize: 11.5, color: V.muted, marginTop: 4 }}>Some AI answers were unavailable; percentages use only the answers we received.</div>}
       <div style={{ fontSize: 12, fontWeight: 600, color: V.muted, letterSpacing: 0.4, margin: "18px 0 10px" }}>THE {d.queriesRun} BUYER QUESTIONS WE ASKED</div>
       <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
         {(d.perQuery || []).map((q, i) => {
           const hit = q.webMentioned || q.memMentioned;
+          const noAnswer = !hit && q.webOk === false && q.memOk === false;
           return (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: hit ? "#EAFBF4" : "#FFF3F1", border: `1px solid ${hit ? "#CFF3E6" : "#FFD9D3"}`, borderRadius: 11, padding: "10px 13px" }}>
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: noAnswer ? "#F3F3FA" : hit ? "#EAFBF4" : "#FFF3F1", border: `1px solid ${noAnswer ? V.border : hit ? "#CFF3E6" : "#FFD9D3"}`, borderRadius: 11, padding: "10px 13px" }}>
               <span style={{ fontSize: 13.5, color: V.ink }}>"{q.query}"</span>
-              <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: hit ? V.teal : V.coral }}>{hit ? "✓ mentioned" : "✕ skipped"}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: noAnswer ? V.muted : hit ? V.teal : V.coral }}>{noAnswer ? "— no answer" : hit ? "✓ mentioned" : "✕ skipped"}</span>
             </div>
           );
         })}
@@ -592,7 +628,7 @@ function AIVisibility({ report }) {
           </div>
         </div>
       )}
-      <button onClick={() => { setStatus("idle"); setData(null); }} style={{ marginTop: 18, background: "none", border: `1.5px solid ${V.border}`, borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13.5, color: V.ink }}>
+      <button onClick={() => setRunState({ owner: userId, status: "idle", data: null, err: "" })} style={{ marginTop: 18, background: "none", border: `1.5px solid ${V.border}`, borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontWeight: 600, fontSize: 13.5, color: V.ink }}>
         Run again
       </button>
     </div>
