@@ -342,9 +342,9 @@ model VisibilityUsageOperation {
 model VisibilityRecoveryReview {
   id          String    @id @default(cuid())
   operationId String
-  operation   VisibilityUsageOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  operation   VisibilityUsageOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   reviewerId  String
   decision    String
   reason      String
