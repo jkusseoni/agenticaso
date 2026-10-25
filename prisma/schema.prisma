@@ -37,6 +37,7 @@ model Workspace {
   subscription   Subscription?
   usagePeriods   UsagePeriod[]
   visibilityUsageOperations VisibilityUsageOperation[]
+  visibilityRecoveryReviews VisibilityRecoveryReview[]
   apiKeys        ApiKey[]
   mcpRateBuckets McpRateBucket[]
   funnelEvents   FunnelEvent[]
@@ -334,6 +335,24 @@ model VisibilityUsageOperation {
 
   @@index([workspaceId, createdAt])
   @@index([usagePeriodId, status])
+  recoveryReviews VisibilityRecoveryReview[]
+}
+
+/// Immutable, non-executable manual review record for unresolved visibility usage.
+model VisibilityRecoveryReview {
+  id          String    @id @default(cuid())
+  operationId String
+  operation   VisibilityUsageOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  decision    String
+  reason      String
+  evidence    Json
+  createdAt   DateTime  @default(now())
+
+  @@index([operationId, createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 /// Lightweight conversion-funnel counts. No email, Clerk id, IP, or payment details.
