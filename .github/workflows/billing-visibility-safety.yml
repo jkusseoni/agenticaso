@@ -32,6 +32,7 @@ jobs:
       - name: Validate Prisma schema
         env:
           DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
         run: npx prisma validate
       - name: Billing and visibility regression tests
         run: node --test lib/billing/__tests__/client-view.test.js lib/visibility/__tests__/visibility.test.js
