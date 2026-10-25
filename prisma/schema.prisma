@@ -338,6 +338,16 @@ model VisibilityUsageOperation {
   recoveryReviews VisibilityRecoveryReview[]
 }
 
+/// Server-controlled grants for manual recovery review; no user self-service writes.
+model VisibilityRecoveryAdminGrant {
+  actorId      String   @id
+  enabled      Boolean  @default(false)
+  permissions  String[] @default([])
+  workspaceIds String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 /// Immutable, non-executable manual review record for unresolved visibility usage.
 model VisibilityRecoveryReview {
   id          String    @id @default(cuid())
