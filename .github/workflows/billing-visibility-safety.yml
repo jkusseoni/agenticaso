@@ -5,6 +5,8 @@ on:
     paths:
       - "lib/billing/**"
       - "lib/visibility/**"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/billing-visibility-safety.yml"
@@ -27,5 +29,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+        run: npx prisma validate
       - name: Billing and visibility regression tests
         run: node --test lib/billing/__tests__/client-view.test.js lib/visibility/__tests__/visibility.test.js
