@@ -36,6 +36,7 @@ model Workspace {
   websites       Website[]
   subscription   Subscription?
   usagePeriods   UsagePeriod[]
+  visibilityUsageOperations VisibilityUsageOperation[]
   apiKeys        ApiKey[]
   mcpRateBuckets McpRateBucket[]
   funnelEvents   FunnelEvent[]
@@ -310,11 +311,29 @@ model UsagePeriod {
   aiTestsReserved Int       @default(0)
   audits          Int       @default(0)
   monitoringRuns  Int       @default(0)
+  visibilityUsageOperations VisibilityUsageOperation[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@unique([workspaceId, periodStart])
   @@index([workspaceId, periodEnd])
+}
+
+/// Durable reservation identity for visibility usage. Not wired into runtime yet.
+model VisibilityUsageOperation {
+  id              String      @id
+  workspaceId     String
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usagePeriodId   String
+  usagePeriod     UsagePeriod @relation(fields: [usagePeriodId], references: [id], onDelete: Cascade)
+  reservedAiTests Int
+  actualAiTests   Int?
+  status          String      @default("reserved")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([workspaceId, createdAt])
+  @@index([usagePeriodId, status])
 }
 
 /// Lightweight conversion-funnel counts. No email, Clerk id, IP, or payment details.
