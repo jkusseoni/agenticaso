@@ -36,3 +36,35 @@ jobs:
         run: npx prisma validate
       - name: Billing and visibility regression tests
         run: node --test lib/billing/__tests__/client-view.test.js lib/visibility/__tests__/visibility.test.js
+
+  disposable-postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: agenticaso_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d agenticaso_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
+      DIRECT_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy
