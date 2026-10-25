@@ -35,7 +35,7 @@ jobs:
           DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
         run: npx prisma validate
       - name: Billing and visibility regression tests
-        run: node --test lib/billing/__tests__/client-view.test.js lib/billing/__tests__/visibility-operation.test.js lib/billing/__tests__/visibility-usage-session.test.js lib/billing/__tests__/visibility-recovery.test.js lib/billing/__tests__/visibility-recovery-decision.test.js lib/billing/__tests__/visibility-recovery-authorized.test.js lib/billing/__tests__/visibility-recovery-session.test.js lib/billing/__tests__/visibility-recovery-rbac.test.js lib/billing/__tests__/visibility-recovery-clerk.test.js lib/billing/__tests__/visibility-recovery-history.test.js lib/visibility/__tests__/visibility.test.js
+        run: node --test lib/billing/__tests__/client-view.test.js lib/billing/__tests__/visibility-operation.test.js lib/billing/__tests__/visibility-usage-session.test.js lib/billing/__tests__/visibility-recovery.test.js lib/billing/__tests__/visibility-recovery-decision.test.js lib/billing/__tests__/visibility-recovery-authorized.test.js lib/billing/__tests__/visibility-recovery-session.test.js lib/billing/__tests__/visibility-recovery-rbac.test.js lib/billing/__tests__/visibility-recovery-clerk.test.js lib/billing/__tests__/visibility-recovery-policy-store.test.js lib/billing/__tests__/visibility-recovery-history.test.js lib/visibility/__tests__/visibility.test.js
 
   disposable-postgres-migration:
     runs-on: ubuntu-latest
