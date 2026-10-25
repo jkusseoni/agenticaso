@@ -1,0 +1,31 @@
+name: Billing and Visibility Safety Tests
+
+on:
+  pull_request:
+    paths:
+      - "lib/billing/**"
+      - "lib/visibility/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/billing-visibility-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Billing and visibility regression tests
+        run: node --test lib/billing/__tests__/client-view.test.js lib/visibility/__tests__/visibility.test.js
