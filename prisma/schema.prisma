@@ -348,6 +348,21 @@ model VisibilityRecoveryAdminGrant {
   updatedAt    DateTime @updatedAt
 }
 
+/// Append-only operator grant change record; actor IDs and scope only.
+model VisibilityRecoveryGrantAudit {
+  id          String   @id @default(cuid())
+  targetActorId String
+  operatorId  String
+  action      String
+  beforeState Json?
+  afterState  Json
+  reason      String
+  createdAt   DateTime @default(now())
+
+  @@index([targetActorId, createdAt])
+  @@index([operatorId, createdAt])
+}
+
 /// Immutable, non-executable manual review record for unresolved visibility usage.
 model VisibilityRecoveryReview {
   id          String    @id @default(cuid())
