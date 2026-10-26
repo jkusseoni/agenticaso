@@ -24,3 +24,14 @@
 - Admin policy source, trusted role ownership, and privilege revocation procedure have not been approved.
 - No production Clerk-to-RBAC adapter or admin API is implemented.
 - No production schema migration, feature activation, or PR merge is approved.
+
+
+## Implemented server-only foundations (not activated)
+
+- Clerk recovery HOLD adapter reads current Prisma reviewer grants, requiring scoped `visibility.recovery.hold`.
+- Operator grant changes require a separately verified Clerk operator and independently authorized policy; audit history is append-only in PostgreSQL.
+- `createRecoveryGrantOperatorAuthorizer({ operatorIds })` is an opt-in, server-controlled allowlist factory. An empty list denies everyone. No environment variable, operator identity, production policy, endpoint, or bootstrap is wired automatically.
+- Operator IDs must be approved and provisioned through trusted deployment configuration with change control, restricted access and revocation procedure. Never load operator IDs from request input, public Clerk metadata, or the reviewer-grant database.
+- The policy rejects self-grants and self-revocations. An approved independent operator and second-person review should be required by the operational runbook before activation.
+- Operator configuration changes are not yet audited by the database grant-audit table. Separate deployment configuration audit logs are a production prerequisite.
+- Production readiness remains **HOLD** pending approval, end-to-end authorization review, deployment controls, and explicit go-live authorization.
