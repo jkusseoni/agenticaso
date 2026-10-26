@@ -1,0 +1,74 @@
+name: Billing and Visibility Safety Tests
+
+on:
+  pull_request:
+    paths:
+      - "lib/billing/**"
+      - "lib/visibility/**"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/billing-visibility-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+        run: npx prisma validate
+      - name: Billing and visibility regression tests
+        run: node --test lib/billing/__tests__/client-view.test.js lib/billing/__tests__/visibility-operation.test.js lib/billing/__tests__/visibility-usage-session.test.js lib/billing/__tests__/visibility-recovery.test.js lib/billing/__tests__/visibility-recovery-decision.test.js lib/billing/__tests__/visibility-recovery-authorized.test.js lib/billing/__tests__/visibility-recovery-session.test.js lib/billing/__tests__/visibility-recovery-rbac.test.js lib/billing/__tests__/visibility-recovery-clerk.test.js lib/billing/__tests__/visibility-recovery-policy-store.test.js lib/billing/__tests__/visibility-recovery-grant-admin.test.js lib/billing/__tests__/visibility-recovery-grant-session.test.js lib/billing/__tests__/visibility-recovery-grant-session-adversarial.test.js lib/billing/__tests__/visibility-recovery-grant-clerk.test.js lib/billing/__tests__/visibility-recovery-operator-policy.test.js lib/billing/__tests__/visibility-recovery-admin.test.js lib/billing/__tests__/visibility-recovery-history.test.js lib/visibility/__tests__/visibility.test.js
+
+  disposable-postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: agenticaso_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d agenticaso_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
+      DIRECT_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy
+      - name: Run PostgreSQL visibility settlement integration tests
+        env:
+          VISIBILITY_TEST_DATABASE_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
+        run: node --test --test-concurrency=1 lib/billing/__tests__/visibility-postgres.test.js lib/billing/__tests__/visibility-db-roles-postgres.test.js

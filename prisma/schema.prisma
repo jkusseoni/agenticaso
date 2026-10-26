@@ -36,6 +36,8 @@ model Workspace {
   websites       Website[]
   subscription   Subscription?
   usagePeriods   UsagePeriod[]
+  visibilityUsageOperations VisibilityUsageOperation[]
+  visibilityRecoveryReviews VisibilityRecoveryReview[]
   apiKeys        ApiKey[]
   mcpRateBuckets McpRateBucket[]
   funnelEvents   FunnelEvent[]
@@ -310,11 +312,72 @@ model UsagePeriod {
   aiTestsReserved Int       @default(0)
   audits          Int       @default(0)
   monitoringRuns  Int       @default(0)
+  visibilityUsageOperations VisibilityUsageOperation[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@unique([workspaceId, periodStart])
   @@index([workspaceId, periodEnd])
+}
+
+/// Durable reservation identity for visibility usage. Not wired into runtime yet.
+model VisibilityUsageOperation {
+  id              String      @id
+  workspaceId     String
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usagePeriodId   String
+  usagePeriod     UsagePeriod @relation(fields: [usagePeriodId], references: [id], onDelete: Cascade)
+  reservedAiTests Int
+  actualAiTests   Int?
+  status          String      @default("reserved")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([workspaceId, createdAt])
+  @@index([usagePeriodId, status])
+  recoveryReviews VisibilityRecoveryReview[]
+}
+
+/// Server-controlled grants for manual recovery review; no user self-service writes.
+model VisibilityRecoveryAdminGrant {
+  actorId      String   @id
+  enabled      Boolean  @default(false)
+  permissions  String[] @default([])
+  workspaceIds String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// Append-only operator grant change record; actor IDs and scope only.
+model VisibilityRecoveryGrantAudit {
+  id          String   @id @default(cuid())
+  targetActorId String
+  operatorId  String
+  action      String
+  beforeState Json?
+  afterState  Json
+  reason      String
+  createdAt   DateTime @default(now())
+
+  @@index([targetActorId, createdAt])
+  @@index([operatorId, createdAt])
+}
+
+/// Immutable, non-executable manual review record for unresolved visibility usage.
+model VisibilityRecoveryReview {
+  id          String    @id @default(cuid())
+  operationId String
+  operation   VisibilityUsageOperation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  reviewerId  String
+  decision    String
+  reason      String
+  evidence    Json
+  createdAt   DateTime  @default(now())
+
+  @@index([operationId, createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 /// Lightweight conversion-funnel counts. No email, Clerk id, IP, or payment details.
