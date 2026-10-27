@@ -72,3 +72,4 @@ jobs:
         env:
           VISIBILITY_TEST_DATABASE_URL: postgresql://ci:ci_only@localhost:5432/agenticaso_ci
         run: node --test --test-concurrency=1 lib/billing/__tests__/visibility-postgres.test.js lib/billing/__tests__/visibility-db-roles-postgres.test.js
+# CI verification for MCP integration branch
