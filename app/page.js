@@ -12,9 +12,9 @@ import { notifyChatgptPluginClick } from "@/lib/growth/homepage-click";
   ANSWER; Agenticaso makes you the PURCHASE — found, recommended and bought by
   the AI agents your customers now shop with.
 
-  Deploy this to Vercel today and point Agenticaso.com at it. The scan is
-  simulated (a browser can't fetch cross-origin sites); wire real checks in
-  Next.js API routes behind the same UI:
+  The free scan calls the server-side /api/scan route. Advanced AI
+  visibility tests use /api/visibility; verify live behavior in staging
+  before making production performance or checkout claims:
     Found        -> robots.txt (GPTBot/ClaudeBot/PerplexityBot allowed?), feed, sitemap
     Understood   -> schema.org Product/Offer, llms.txt, clean (non-JS-locked) HTML
     Recommended  -> reviews/ratings, entity clarity, comparison-ready copy
@@ -38,10 +38,10 @@ const LADDER = [
   { k: "ASO", d: "Be the purchase", old: false },
 ];
 const STATS = [
-  { n: "393%", l: "YoY growth in AI traffic to retail sites (Adobe, Q1 2026)" },
-  { n: "50M", l: "shopping queries a day now run through ChatGPT" },
-  { n: "4.4×", l: "higher conversion from AI-referred shoppers" },
-  { n: "$15T", l: "of spend AI agents will intermediate by 2028 (Gartner)" },
+  { n: "Found", l: "Check whether AI crawlers can discover your store" },
+  { n: "Understood", l: "Inspect product information and structured data" },
+  { n: "Recommended", l: "Identify signals that help agents evaluate products" },
+  { n: "Bought", l: "Review purchase-path and checkout-readiness signals" },
 ];
 const PILLARS = [
   { key: "discover", i: "🔍", t: "Found", q: "Can agents crawl & index you?", d: "Agent crawlers can reach you and your product feed is live — so agents can see you at all." },
@@ -425,8 +425,8 @@ function Proof() {
   return (
     <section className="wrap" style={{ padding: "42px 24px" }}>
       <div style={{ background: `linear-gradient(135deg,${C.dark},#211F45)`, borderRadius: 24, padding: "42px 40px", color: "#fff", textAlign: "center" }}>
-        <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 25, lineHeight: 1.4, maxWidth: 720, margin: "0 auto 18px", letterSpacing: -0.4 }}>"We were invisible inside ChatGPT. Within two months Agenticaso had agents recommending us by name — and completing checkouts."</div>
-        <div style={{ fontSize: 13, color: "#B9B9DD" }}>Placeholder testimonial — replace with a real customer quote before launch</div>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 25, lineHeight: 1.4, maxWidth: 720, margin: "0 auto 18px", letterSpacing: -0.4 }}>"Start with a store scan. See the signals AI shopping agents can read, and prioritize what to improve next."</div>
+        <div style={{ fontSize: 13, color: "#B9B9DD" }}>Product workflow preview — not a customer testimonial</div>
       </div>
     </section>
   );
@@ -448,7 +448,7 @@ function Footer() {
     <footer style={{ borderTop: `1px solid ${C.border}`, background: "#fff" }}>
       <div className="wrap" style={{ padding: "26px 24px", display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "space-between", alignItems: "center" }}>
         <Logo />
-        <div style={{ fontSize: 12, color: C.muted, maxWidth: 560, lineHeight: 1.5 }}>Agenticaso · ASO = Agentic Search Optimization. Stats: Adobe, OpenAI, Gartner. Scan is a prototype — wire real checks in your backend.</div>
+        <div style={{ fontSize: 12, color: C.muted, maxWidth: 560, lineHeight: 1.5 }}>Agenticaso · ASO = Agentic Search Optimization. Automated checks indicate technical readiness; scores do not guarantee AI recommendations or completed purchases.</div>
       </div>
     </footer>
   );
