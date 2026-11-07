@@ -438,7 +438,7 @@ function FinalCTA({ onCTA }) {
     <section className="wrap" style={{ padding: "34px 24px 56px" }}>
       <div style={{ background: `linear-gradient(135deg,${C.violet},${C.violetDeep})`, borderRadius: 24, padding: "46px 40px", textAlign: "center", color: "#fff" }}>
         <h2 style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 32, letterSpacing: -0.8, marginBottom: 12 }}>See what agents say about your store</h2>
-        <p style={{ fontSize: 16, color: "rgba(255,255,255,.85)", maxWidth: 470, margin: "0 auto 24px", lineHeight: 1.5 }}>Free agent-readiness report in minutes — your score, competitor gaps, and the fixes that win you the sale.</p>
+        <p style={{ fontSize: 16, color: "rgba(255,255,255,.85)", maxWidth: 470, margin: "0 auto 24px", lineHeight: 1.5 }}>Free agent-readiness report in minutes — your score, observed readiness signals, and prioritized fixes.</p>
         <button className="btn" onClick={onCTA} style={{ ...btn(false), background: "#fff", color: C.violetDeep, border: "none" }}>Run your free report</button>
         <div style={{ maxWidth: 460, margin: "20px auto 0" }}><EmailCapture source="landing" report={null} /></div>
       </div>
@@ -659,13 +659,13 @@ function EmailCapture({ source, report }) {
   if (state === "done") {
     return (
       <div style={{ background: "#EAFBF4", border: "1px solid #CFF3E6", borderRadius: 16, padding: 20, textAlign: "center", color: "#0FB88E", fontWeight: 600 }}>
-        ✓ Done — we'll email your full report and weekly agent-tracking.
+        ✓ Thanks — your contact request was received. Your scan results are available on this page.
       </div>
     );
   }
   return (
     <div style={{ background: "#fff", border: "1px solid #E7E8F3", borderRadius: 16, padding: 20 }}>
-      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧 Get your full report + weekly agent-tracking</div>
+      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧 Request a follow-up about your scan</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="you@email.com" style={{ flex: 1, minWidth: 200, padding: "12px 14px", borderRadius: 11, border: "1.5px solid #E7E8F3", fontSize: 15 }} />
         <button onClick={submit} disabled={state === "saving"} style={{ padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, color: "#fff", background: "linear-gradient(135deg,#5A47F5,#3A2AC0)" }}>{state === "saving" ? "…" : "Send it"}</button>
