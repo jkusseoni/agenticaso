@@ -12,9 +12,9 @@ import { notifyChatgptPluginClick } from "@/lib/growth/homepage-click";
   ANSWER; Agenticaso makes you the PURCHASE — found, recommended and bought by
   the AI agents your customers now shop with.
 
-  Deploy this to Vercel today and point Agenticaso.com at it. The scan is
-  simulated (a browser can't fetch cross-origin sites); wire real checks in
-  Next.js API routes behind the same UI:
+  The free scan calls the server-side /api/scan route. Advanced AI
+  visibility tests use /api/visibility; verify live behavior in staging
+  before making production performance or checkout claims:
     Found        -> robots.txt (GPTBot/ClaudeBot/PerplexityBot allowed?), feed, sitemap
     Understood   -> schema.org Product/Offer, llms.txt, clean (non-JS-locked) HTML
     Recommended  -> reviews/ratings, entity clarity, comparison-ready copy
@@ -38,10 +38,10 @@ const LADDER = [
   { k: "ASO", d: "Be the purchase", old: false },
 ];
 const STATS = [
-  { n: "393%", l: "YoY growth in AI traffic to retail sites (Adobe, Q1 2026)" },
-  { n: "50M", l: "shopping queries a day now run through ChatGPT" },
-  { n: "4.4×", l: "higher conversion from AI-referred shoppers" },
-  { n: "$15T", l: "of spend AI agents will intermediate by 2028 (Gartner)" },
+  { n: "Found", l: "Check whether AI crawlers can discover your store" },
+  { n: "Understood", l: "Inspect product information and structured data" },
+  { n: "Recommended", l: "Identify signals that help agents evaluate products" },
+  { n: "Bought", l: "Review purchase-path and checkout-readiness signals" },
 ];
 const PILLARS = [
   { key: "discover", i: "🔍", t: "Found", q: "Can agents crawl & index you?", d: "Agent crawlers can reach you and your product feed is live — so agents can see you at all." },
@@ -280,7 +280,7 @@ function AgentActionCard() {
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {["472 AGENT PICKS", "₹0 → ₹6.1L / MO", "9.1× AGENT REVENUE"].map((t) => <span key={t} style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", color: "#B9B9DD", border: "1px solid #33325A", borderRadius: 7, padding: "5px 9px" }}>{t}</span>)}
+        {["ILLUSTRATIVE EXAMPLE", "NOT A LIVE AGENT TEST", "NO REVENUE CLAIM"].map((t) => <span key={t} style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", color: "#B9B9DD", border: "1px solid #33325A", borderRadius: 7, padding: "5px 9px" }}>{t}</span>)}
       </div>
       <div style={{ fontSize: 10, color: "#6A6A92", fontFamily: "ui-monospace, monospace", marginTop: 14 }}>AGENT ACTION CARD · SAMPLE</div>
     </div>
@@ -304,7 +304,7 @@ function Scanning({ step, clean }) {
 }
 
 function Report({ report, reset }) {
-  const { total, gap, revenue, findings, verdict, clean } = report;
+  const { total, findings, verdict, clean, evidence, issues = [] } = report;
   return (
     <section className="wrap rise" style={{ padding: "40px 24px 20px" }}>
       <div className="score-row" style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 28, alignItems: "center", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, marginBottom: 20 }}>
@@ -312,10 +312,7 @@ function Report({ report, reset }) {
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, letterSpacing: 0.4, marginBottom: 6 }}>AGENT-READINESS · {clean}</div>
           <p style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 20, lineHeight: 1.3, margin: "0 0 14px", letterSpacing: -0.3 }}>{verdict}</p>
-          <div style={{ display: "flex", gap: 22, justifyContent: "center", flexWrap: "wrap" }}>
-            <Stat label="Behind top competitor" value={`−${gap}%`} color={C.coral} />
-            <Stat label="Monthly revenue at risk" value={`₹${revenue}K`} color={C.violetDeep} />
-          </div>
+          <div style={{ fontSize: 12, color: C.muted }}>Technical signals only · No competitor benchmark, revenue estimate, AI recommendation or checkout test performed.</div>
         </div>
       </div>
 
@@ -335,6 +332,11 @@ function Report({ report, reset }) {
         ))}
       </div>
 
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, marginBottom: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Observed issues and evidence</h3>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{report.scanScope || "Limited public website scan"} · {evidence?.checkedAt ? new Date(evidence.checkedAt).toLocaleString() : ""}</div>
+        {issues.length ? issues.map((issue) => <div key={issue.id} style={{ padding: "12px 0", borderTop: `1px solid ${C.border}` }}><strong>{issue.problem}</strong> · {issue.severity}<div style={{ fontSize: 13, marginTop: 5 }}>{issue.fix}</div><div style={{ fontSize: 12, color: C.muted, marginTop: 5 }}>Evidence: {issue.evidence?.url || evidence?.scannedUrl || clean} {issue.evidence?.status != null ? `(HTTP ${issue.evidence.status})` : ""}</div></div>) : <div>No issues detected by the limited checks; catalog pages and checkout were not verified.</div>}
+      </div>
       <div style={{ background: `linear-gradient(135deg,${C.violetDeep},${C.violet})`, borderRadius: 20, padding: 26, color: "#fff", marginBottom: 18 }}>
         <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 22, letterSpacing: -0.4, marginBottom: 14 }}>Your top fixes</div>
         {findings.filter((f) => !f.ok).slice(0, 3).map((f, i) => (
@@ -343,7 +345,7 @@ function Report({ report, reset }) {
           </div>
         ))}
         {findings.every((f) => f.ok) && <div style={{ fontSize: 14.5 }}>You're agent-ready. Keep your feed and reviews fresh to stay ahead.</div>}
-        <button className="btn" style={{ marginTop: 18, padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14.5, color: C.violetDeep, background: "#fff" }}>Fix these automatically →</button>
+        <button className="btn" style={{ marginTop: 18, padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14.5, color: C.violetDeep, background: "#fff" }} onClick={() => window.location.assign("/dashboard")}>Review detailed fixes in dashboard →</button>
       </div>
 
       <AIVisibility report={report} />
@@ -425,8 +427,8 @@ function Proof() {
   return (
     <section className="wrap" style={{ padding: "42px 24px" }}>
       <div style={{ background: `linear-gradient(135deg,${C.dark},#211F45)`, borderRadius: 24, padding: "42px 40px", color: "#fff", textAlign: "center" }}>
-        <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 25, lineHeight: 1.4, maxWidth: 720, margin: "0 auto 18px", letterSpacing: -0.4 }}>"We were invisible inside ChatGPT. Within two months Agenticaso had agents recommending us by name — and completing checkouts."</div>
-        <div style={{ fontSize: 13, color: "#B9B9DD" }}>Placeholder testimonial — replace with a real customer quote before launch</div>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 25, lineHeight: 1.4, maxWidth: 720, margin: "0 auto 18px", letterSpacing: -0.4 }}>"Start with a store scan. See the signals AI shopping agents can read, and prioritize what to improve next."</div>
+        <div style={{ fontSize: 13, color: "#B9B9DD" }}>Product workflow preview — not a customer testimonial</div>
       </div>
     </section>
   );
@@ -436,7 +438,7 @@ function FinalCTA({ onCTA }) {
     <section className="wrap" style={{ padding: "34px 24px 56px" }}>
       <div style={{ background: `linear-gradient(135deg,${C.violet},${C.violetDeep})`, borderRadius: 24, padding: "46px 40px", textAlign: "center", color: "#fff" }}>
         <h2 style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 32, letterSpacing: -0.8, marginBottom: 12 }}>See what agents say about your store</h2>
-        <p style={{ fontSize: 16, color: "rgba(255,255,255,.85)", maxWidth: 470, margin: "0 auto 24px", lineHeight: 1.5 }}>Free agent-readiness report in minutes — your score, competitor gaps, and the fixes that win you the sale.</p>
+        <p style={{ fontSize: 16, color: "rgba(255,255,255,.85)", maxWidth: 470, margin: "0 auto 24px", lineHeight: 1.5 }}>Free agent-readiness report in minutes — your score, observed readiness signals, and prioritized fixes.</p>
         <button className="btn" onClick={onCTA} style={{ ...btn(false), background: "#fff", color: C.violetDeep, border: "none" }}>Run your free report</button>
         <div style={{ maxWidth: 460, margin: "20px auto 0" }}><EmailCapture source="landing" report={null} /></div>
       </div>
@@ -448,7 +450,7 @@ function Footer() {
     <footer style={{ borderTop: `1px solid ${C.border}`, background: "#fff" }}>
       <div className="wrap" style={{ padding: "26px 24px", display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "space-between", alignItems: "center" }}>
         <Logo />
-        <div style={{ fontSize: 12, color: C.muted, maxWidth: 560, lineHeight: 1.5 }}>Agenticaso · ASO = Agentic Search Optimization. Stats: Adobe, OpenAI, Gartner. Scan is a prototype — wire real checks in your backend.</div>
+        <div style={{ fontSize: 12, color: C.muted, maxWidth: 560, lineHeight: 1.5 }}>Agenticaso · ASO = Agentic Search Optimization. Automated checks indicate technical readiness; scores do not guarantee AI recommendations or completed purchases.</div>
       </div>
     </footer>
   );
@@ -657,13 +659,13 @@ function EmailCapture({ source, report }) {
   if (state === "done") {
     return (
       <div style={{ background: "#EAFBF4", border: "1px solid #CFF3E6", borderRadius: 16, padding: 20, textAlign: "center", color: "#0FB88E", fontWeight: 600 }}>
-        ✓ Done — we'll email your full report and weekly agent-tracking.
+        ✓ Thanks — your contact request was received. Your scan results are available on this page.
       </div>
     );
   }
   return (
     <div style={{ background: "#fff", border: "1px solid #E7E8F3", borderRadius: 16, padding: 20 }}>
-      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧 Get your full report + weekly agent-tracking</div>
+      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧 Request a follow-up about your scan</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="you@email.com" style={{ flex: 1, minWidth: 200, padding: "12px 14px", borderRadius: 11, border: "1.5px solid #E7E8F3", fontSize: 15 }} />
         <button onClick={submit} disabled={state === "saving"} style={{ padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, color: "#fff", background: "linear-gradient(135deg,#5A47F5,#3A2AC0)" }}>{state === "saving" ? "…" : "Send it"}</button>
