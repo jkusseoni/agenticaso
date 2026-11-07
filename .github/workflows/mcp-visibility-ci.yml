@@ -56,5 +56,8 @@ jobs:
       - name: Run MCP security tests
         run: node --test lib/mcp/__tests__/*.test.js
 
+      - name: Run scanner SSRF regression tests
+        run: node --test lib/scan/__tests__/*.test.js
+
       - name: Build application
         run: npm run build
