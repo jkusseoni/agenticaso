@@ -280,7 +280,7 @@ function AgentActionCard() {
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {["472 AGENT PICKS", "₹0 → ₹6.1L / MO", "9.1× AGENT REVENUE"].map((t) => <span key={t} style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", color: "#B9B9DD", border: "1px solid #33325A", borderRadius: 7, padding: "5px 9px" }}>{t}</span>)}
+        {["ILLUSTRATIVE EXAMPLE", "NOT A LIVE AGENT TEST", "NO REVENUE CLAIM"].map((t) => <span key={t} style={{ fontSize: 10.5, fontFamily: "ui-monospace, monospace", color: "#B9B9DD", border: "1px solid #33325A", borderRadius: 7, padding: "5px 9px" }}>{t}</span>)}
       </div>
       <div style={{ fontSize: 10, color: "#6A6A92", fontFamily: "ui-monospace, monospace", marginTop: 14 }}>AGENT ACTION CARD · SAMPLE</div>
     </div>
@@ -304,7 +304,7 @@ function Scanning({ step, clean }) {
 }
 
 function Report({ report, reset }) {
-  const { total, gap, revenue, findings, verdict, clean } = report;
+  const { total, findings, verdict, clean, evidence, issues = [] } = report;
   return (
     <section className="wrap rise" style={{ padding: "40px 24px 20px" }}>
       <div className="score-row" style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 28, alignItems: "center", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, marginBottom: 20 }}>
@@ -312,10 +312,7 @@ function Report({ report, reset }) {
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, letterSpacing: 0.4, marginBottom: 6 }}>AGENT-READINESS · {clean}</div>
           <p style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 20, lineHeight: 1.3, margin: "0 0 14px", letterSpacing: -0.3 }}>{verdict}</p>
-          <div style={{ display: "flex", gap: 22, justifyContent: "center", flexWrap: "wrap" }}>
-            <Stat label="Behind top competitor" value={`−${gap}%`} color={C.coral} />
-            <Stat label="Monthly revenue at risk" value={`₹${revenue}K`} color={C.violetDeep} />
-          </div>
+          <div style={{ fontSize: 12, color: C.muted }}>Technical signals only · No competitor benchmark, revenue estimate, AI recommendation or checkout test performed.</div>
         </div>
       </div>
 
@@ -335,6 +332,11 @@ function Report({ report, reset }) {
         ))}
       </div>
 
+      <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, marginBottom: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Observed issues and evidence</h3>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{report.scanScope || "Limited public website scan"} · {evidence?.checkedAt ? new Date(evidence.checkedAt).toLocaleString() : ""}</div>
+        {issues.length ? issues.map((issue) => <div key={issue.id} style={{ padding: "12px 0", borderTop: `1px solid ${C.border}` }}><strong>{issue.problem}</strong> · {issue.severity}<div style={{ fontSize: 13, marginTop: 5 }}>{issue.fix}</div><div style={{ fontSize: 12, color: C.muted, marginTop: 5 }}>Evidence: {issue.evidence?.url || evidence?.scannedUrl || clean} {issue.evidence?.status != null ? `(HTTP ${issue.evidence.status})` : ""}</div></div>) : <div>No issues detected by the limited checks; catalog pages and checkout were not verified.</div>}
+      </div>
       <div style={{ background: `linear-gradient(135deg,${C.violetDeep},${C.violet})`, borderRadius: 20, padding: 26, color: "#fff", marginBottom: 18 }}>
         <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 22, letterSpacing: -0.4, marginBottom: 14 }}>Your top fixes</div>
         {findings.filter((f) => !f.ok).slice(0, 3).map((f, i) => (
@@ -343,7 +345,7 @@ function Report({ report, reset }) {
           </div>
         ))}
         {findings.every((f) => f.ok) && <div style={{ fontSize: 14.5 }}>You're agent-ready. Keep your feed and reviews fresh to stay ahead.</div>}
-        <button className="btn" style={{ marginTop: 18, padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14.5, color: C.violetDeep, background: "#fff" }}>Fix these automatically →</button>
+        <button className="btn" style={{ marginTop: 18, padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14.5, color: C.violetDeep, background: "#fff" }} onClick={() => window.location.assign("/dashboard")}>Review detailed fixes in dashboard →</button>
       </div>
 
       <AIVisibility report={report} />
