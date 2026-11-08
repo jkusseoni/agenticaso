@@ -11,7 +11,7 @@
 - Case-insensitive Git grep across tracked `prisma/migrations` found no reference to either legacy table or any `DROP TABLE` / `DROP TYPE` statement. The new `VisibilityUsageOperation` table is created in `20261025170000_visibility_usage_operation`; its migration explicitly says it is schema-only and not yet wired to runtime.
 - Tracked source grep (excluding migrations) found legacy table names only in `docs/STAGING_DATABASE_VERIFICATION.md`. This does not rule out dynamically generated SQL, external jobs, or untracked code.
 
-**Unresolved:** exact origin of legacy objects, dependency graph including stored routines/policies, historical use by deployed services, migration checksums, recovery point, and repeatable before/after diff. No conclusion that dropping is safe is warranted.
+**Rehearsal evidence (2026-11-08):** A data-and-schema child branch `agenticaso-legacy-cleanup-rehearsal-20261108` was created from `agenticaso-migration-test` (scheduled to expire 2026-11-15). On child `neondb`, both legacy tables have 0 rows, migration ledger has 17 completed and 0 incomplete entries, and Prisma read-only schema diff reports exactly two legacy enums, two legacy tables, and five foreign keys (exit code 2). No cleanup has been executed. A function/procedure name search excluding aggregate routines returned no results. The original function search failed on PostgreSQL `array_agg` and must not be treated as a successful audit. The rehearsal connection must be independently verified by matching its hostname to the child's Neon Connect screen; file name alone is insufficient.\n\n**Unresolved:** exact origin of legacy objects, dependency graph including stored routines/policies, historical use by deployed services, migration checksums, recovery point, and repeatable before/after diff. No conclusion that dropping is safe is warranted.
 
 ## Phase A — read-only preflight
 
@@ -42,6 +42,7 @@ ORDER BY 1, 2, 3;
 SELECT n.nspname AS schema_name, p.proname AS routine_name
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname NOT IN ('pg_catalog','information_schema')
+  AND p.prokind IN ('f','p')
   AND (pg_get_functiondef(p.oid) ILIKE '%UsageRequest%'
        OR pg_get_functiondef(p.oid) ILIKE '%UsageReservation%');
 
@@ -51,7 +52,7 @@ FROM public."_prisma_migrations" ORDER BY migration_name;
 ```
 
 4. Review row-level security policies, publications, external integrations, enum usages, and catalog dependency results; do not infer absence of dependencies solely from empty rows.
-5. Produce and save the exact read-only Prisma drift SQL against the intended migration-test branch, and review the complete output. Exit code 2 denotes differences, not permission to apply them.
+5. On the **rehearsal child**, a read-only Prisma diff confirmed the expected 2 enums, 2 tables, and 5 FKs. Save the full SQL diff locally for review. Exit code 2 denotes differences, not permission to apply them.\n6. Before any mutation, confirm both DATABASE_URL and DIRECT_URL point to the rehearsal child and database neondb (host only; do not expose secrets). Also review all SQL and dependency checks against the child.
 
 ## Phase B — proposed change (NOT implemented)
 
