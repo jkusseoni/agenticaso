@@ -15,3 +15,18 @@ Status: Local automated verification PASS; deployment pending.
 - Syntax and git diff checks passed.
 - Remaining: review classification edge cases, commit, deploy to protected Preview, and run live regression tests.
 - No production deployment or database migration performed.
+
+## 2026-11-09 — P0 Preview Live Verification
+
+Status: Site-classification acceptance checks passed.
+
+- Commit: ff68a6d
+- Branch: fix/p0-scanner-site-classification
+- Vercel Preview deployment: dpl_CDbP5dVYLJeiujsyV5L2q9WGZ6mo
+- Automated scanner tests: 31 passed, 0 failed.
+- example.com: unknown, 29/100, no ecommerce-only issues.
+- cartrenew.com: saas, 59/100, no ecommerce-only issues.
+- allbirds.com: ecommerce, 85/100, two reachable product pages with Product, Offer and Rating schema.
+- No live AI checkout, purchase or recommendation was tested.
+- Follow-up: validate CartRenew sitemap response and product-feed content, then review full user journey.
+- Production deployment and main merge remain pending.
