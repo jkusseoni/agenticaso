@@ -384,3 +384,30 @@ model McpRateBucket {
   @@unique([workspaceId, action, windowStart])
   @@index([workspaceId, action])
 }
+
+enum LeadVerificationStatus {
+  pending
+  processing
+  verified
+  failed
+  expired
+}
+
+
+model ReportEmailLead {
+  id                  String                 @id @default(cuid())
+  email               String
+  websiteUrl          String
+  verificationHash    String                 @unique
+  status              LeadVerificationStatus @default(pending)
+  expiresAt           DateTime
+  verifiedAt          DateTime?
+  processingStartedAt DateTime?
+  attemptCount        Int                    @default(0)
+  reportSentAt        DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([email, createdAt])
+  @@index([status, expiresAt])
+}

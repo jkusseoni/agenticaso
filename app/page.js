@@ -458,8 +458,53 @@ function Footer() {
 /* shared bits */
 function AIVisibility({ report }) {
   const { isSignedIn, user } = useUser();
-  const isPaid = user?.publicMetadata?.paid === true;
+  const userId = isSignedIn ? user?.id : null;
 
+  const [billing, setBilling] = React.useState({
+    userId: null,
+    loading: true,
+    isPaid: false,
+    priceLabel: "$19/month",
+  });
+
+  React.useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+
+    fetch("/api/billing/status", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Billing status unavailable");
+        return response.json();
+      })
+      .then((result) => {
+        if (cancelled) return;
+
+        setBilling({
+          userId,
+          loading: false,
+          isPaid: result.billing?.isPaid === true,
+          priceLabel: result.pricing?.pro?.label || "$19/month",
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+
+        setBilling({
+          userId,
+          loading: false,
+          isPaid: false,
+          priceLabel: "$19/month",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const billingLoading = !userId || billing.userId !== userId || billing.loading;
+  const isPaid = Boolean(userId && billing.userId === userId && billing.isPaid);
   const [status, setStatus] = React.useState("idle"); // idle | running | done | error
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState("");
@@ -507,18 +552,28 @@ function AIVisibility({ report }) {
           🔒 PRO · AI VISIBILITY
         </div>
         <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 24, letterSpacing: -0.5, marginBottom: 8, lineHeight: 1.2 }}>
-          Do AI assistants actually recommend you?
+          Does your brand appear in AI-generated answers?
         </div>
         <p style={{ fontSize: 14.5, color: "rgba(255,255,255,.8)", lineHeight: 1.5, maxWidth: 520, marginBottom: 18 }}>
-          We ask ChatGPT and Perplexity 5 real buyer questions in your category and measure how often <b>{report?.clean}</b> gets recommended vs your competitors. This is the number that decides whether agents send you sales.
+
+          We test five sample buyer questions using Perplexity Sonar and
+GPT-4o-mini, then measure how often <b>{report?.clean}</b>
+appears in their responses. These are sampled brand mentions,
+not verified recommendations, customer referrals, or sales.
         </p>
 
         {!isSignedIn ? (
           <SignInButton mode="modal">
             <button style={ctaBtn(V)}>Sign in to unlock →</button>
           </SignInButton>
+        ) : billingLoading ? (
+          <button type="button" disabled style={ctaBtn(V)}>
+            Checking subscription...
+          </button>
         ) : !isPaid ? (
-          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>Upgrade to Pro — ₹499/mo →</a>
+          <a href="/pricing" style={{ ...ctaBtn(V), display: "inline-block", textDecoration: "none" }}>
+            Upgrade to Pro — {billing.priceLabel} →
+          </a>
         ) : (
           <button onClick={run} style={ctaBtn(V)}>Run AI visibility check →</button>
         )}
@@ -542,18 +597,54 @@ function AIVisibility({ report }) {
 
   // ---------- DONE ----------
   const d = data;
-  const bar = (label, val, sub) => (
+  const bar = (label, val, sub) => {
+  const available = Number.isFinite(val);
+
+  return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
-        <span style={{ color: V.ink, fontWeight: 500 }}>{label}</span>
-        <span style={{ fontWeight: 700, color: sovColor(val) }}>{val}%</span>
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        fontSize: 13,
+        marginBottom: 5
+      }}>
+        <span style={{ color: V.ink, fontWeight: 500 }}>
+          {label}
+        </span>
+        <span style={{
+          fontWeight: 700,
+          color: available ? sovColor(val) : V.muted
+        }}>
+          {available ? `${val}%` : "Unavailable"}
+        </span>
       </div>
-      <div style={{ height: 8, borderRadius: 5, background: V.border, overflow: "hidden" }}>
-        <div style={{ width: `${val}%`, height: "100%", background: sovColor(val), borderRadius: 5, transition: "width .8s ease" }} />
+
+      <div style={{
+        height: 8,
+        borderRadius: 5,
+        background: V.border,
+        overflow: "hidden"
+      }}>
+        <div style={{
+          width: available ? `${val}%` : "0%",
+          height: "100%",
+          background: available ? sovColor(val) : V.border,
+          borderRadius: 5
+        }} />
       </div>
-      {sub && <div style={{ fontSize: 11.5, color: V.muted, marginTop: 4 }}>{sub}</div>}
+
+      {sub && (
+        <div style={{
+          fontSize: 11.5,
+          color: V.muted,
+          marginTop: 4
+        }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
+};
 
   return (
     <div style={{ ...shell, background: "#fff" }}>
@@ -563,7 +654,7 @@ function AIVisibility({ report }) {
           <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 22, letterSpacing: -0.4 }}>{d.brand}</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 38, lineHeight: 1, color: sovColor(d.overall) }}>{d.overall}<span style={{ fontSize: 18, color: V.muted }}>%</span></div>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 38, lineHeight: 1, color: sovColor(d.overall) }}>{Number.isFinite(d.overall) ? `${d.overall}%` : "Incomplete"}</div>
           <div style={{ fontSize: 11, color: V.muted }}>AI share of voice</div>
         </div>
       </div>
@@ -573,11 +664,19 @@ function AIVisibility({ report }) {
       <div style={{ fontSize: 12, fontWeight: 600, color: V.muted, letterSpacing: 0.4, margin: "18px 0 10px" }}>THE {d.queriesRun} BUYER QUESTIONS WE ASKED</div>
       <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
         {(d.perQuery || []).map((q, i) => {
-          const hit = q.webMentioned || q.memMentioned;
+          const unavailable =
+  q.webMentioned === null || q.memMentioned === null;
+
+const hit =
+  q.webMentioned === true || q.memMentioned === true;
           return (
             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: hit ? "#EAFBF4" : "#FFF3F1", border: `1px solid ${hit ? "#CFF3E6" : "#FFD9D3"}`, borderRadius: 11, padding: "10px 13px" }}>
               <span style={{ fontSize: 13.5, color: V.ink }}>"{q.query}"</span>
-              <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: hit ? V.teal : V.coral }}>{hit ? "✓ mentioned" : "✕ skipped"}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", color: hit ? V.teal : V.coral }}>{unavailable
+  ? "Incomplete"
+  : hit
+    ? "✓ mentioned"
+    : "✕ not mentioned"}</span>
             </div>
           );
         })}
@@ -629,7 +728,9 @@ function EmailCapture({ source, report }) {
   }
   return (
     <div style={{ background: "#fff", border: "1px solid #E7E8F3", borderRadius: 16, padding: 20 }}>
-      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧 Get your full report + weekly agent-tracking</div>
+      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 10 }}>📧
+
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="you@email.com" style={{ flex: 1, minWidth: 200, padding: "12px 14px", borderRadius: 11, border: "1.5px solid #E7E8F3", fontSize: 15 }} />
         <button onClick={submit} disabled={state === "saving"} style={{ padding: "12px 20px", borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 600, color: "#fff", background: "linear-gradient(135deg,#5A47F5,#3A2AC0)" }}>{state === "saving" ? "…" : "Send it"}</button>

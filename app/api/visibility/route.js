@@ -3,7 +3,8 @@
 // metadata (set it manually in the Clerk dashboard after a Razorpay payment).
 // Everything else (site identify → 5 queries → Perplexity + GPT → SoV) is unchanged.
 
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { requireClerkUser } from "@/lib/db/auth-gate";
+import { safeFetchText } from "@/lib/scan/safe-fetch.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,11 +38,9 @@ async function chat(model, messages, { web = false } = {}) {
 
 async function siteSignals(url) {
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": UA } });
-    clearTimeout(t);
-    const html = await res.text();
+    const res = await safeFetchText(url, { timeoutMs: 8000, headers: { "User-Agent": UA } });
+    if (!res.ok) return { ok: false };
+    const html = res.text;
     const pick = (re) => (html.match(re)?.[1] || "").replace(/\s+/g, " ").trim().slice(0, 300);
     const title = pick(/<title[^>]*>([^<]+)<\/title>/i);
     const desc = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i);
@@ -69,15 +68,13 @@ function extractCompetitors(answer, brand) {
 
 export async function POST(req) {
   try {
-    if (!BASE || !KEY) return Response.json({ error: "Server not configured." }, { status: 500 });
+
 
     // ---- GATE: must be logged in AND paid ----
-    const { userId } = await auth();
-    if (!userId) return Response.json({ error: "Please sign in to run an AI-visibility check." }, { status: 401 });
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const isPaid = user?.publicMetadata?.paid === true;
-    if (!isPaid) return Response.json({ error: "This is a Pro feature. Upgrade to unlock AI-visibility checks.", upgrade: true }, { status: 402 });
+    const gate = await requireClerkUser({ requirePaid: true });
+    if (!gate.ok) return gate.response;
+    const { userId } = gate;
+    if (!BASE || !KEY) return Response.json({ error: "Server not configured." }, { status: 500 });
 
     const body = await req.json().catch(() => ({}));
     const domainRaw = String(body.url || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -116,27 +113,66 @@ export async function POST(req) {
           chat(SEARCH_MODEL, [{ role: "system", content: "You are a helpful shopping assistant. Recommend specific real brands/stores with brief reasons." }, { role: "user", content: q }], { web: true }).catch((e) => `__ERR__ ${e.message}`),
           chat(REASON_MODEL, [{ role: "system", content: "You are a shopping assistant. Recommend specific brands you know. Be concrete." }, { role: "user", content: q }]).catch((e) => `__ERR__ ${e.message}`),
         ]);
-        const webHit = !webAns.startsWith("__ERR__") && mentioned(webAns, brand, domain);
-        const memHit = !memAns.startsWith("__ERR__") && mentioned(memAns, brand, domain);
-        return { query: q, webMentioned: webHit, memMentioned: memHit, competitors: webAns.startsWith("__ERR__") ? [] : extractCompetitors(webAns, brand) };
+        const webOk = !webAns.startsWith("__ERR__") && Boolean(webAns.trim());
+const memOk = !memAns.startsWith("__ERR__") && Boolean(memAns.trim());
+
+const webHit = webOk ? mentioned(webAns, brand, domain) : null;
+const memHit = memOk ? mentioned(memAns, brand, domain) : null;
+
+        return {
+          query: q,
+          webMentioned: webHit,
+          memMentioned: memHit,
+          competitors: webOk ? extractCompetitors(webAns, brand) : [],
+        };
       })
     );
 
-    const n = perQuery.length || 1;
-    const webCount = perQuery.filter((x) => x.webMentioned).length;
-    const memCount = perQuery.filter((x) => x.memMentioned).length;
-    const webSoV = Math.round((webCount / n) * 100);
-    const memSoV = Math.round((memCount / n) * 100);
-    const overall = Math.round(webSoV * 0.7 + memSoV * 0.3);
+    const n = perQuery.length;
+
+
+const webValid = perQuery.filter(
+  (x) => x.webMentioned !== null
+);
+const memValid = perQuery.filter(
+  (x) => x.memMentioned !== null
+);
+
+const webCount = webValid.filter(
+  (x) => x.webMentioned === true
+).length;
+const memCount = memValid.filter(
+  (x) => x.memMentioned === true
+).length;
+
+const webSoV = webValid.length
+  ? Math.round((webCount / webValid.length) * 100)
+  : null;
+
+const memSoV = memValid.length
+  ? Math.round((memCount / memValid.length) * 100)
+  : null;
+
+const complete =
+  n > 0 &&
+  webValid.length === n &&
+  memValid.length === n;
+
+const overall = complete
+  ? Math.round(webSoV * 0.7 + memSoV * 0.3)
+  : null;
 
     const compCount = {};
     perQuery.forEach((x) => x.competitors.forEach((c) => { compCount[c] = (compCount[c] || 0) + 1; }));
     const topCompetitors = Object.entries(compCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, hits]) => ({ name, hits }));
 
-    const verdict =
-      overall >= 60 ? `AI assistants recommend ${brand} in most buyer searches — strong agentic visibility.` :
-      overall >= 25 ? `AI assistants mention ${brand} sometimes, but often pick competitors first.` :
-      `AI assistants almost never recommend ${brand} — you're invisible in agentic shopping right now.`;
+    const verdict = !complete
+  ? "AI visibility check is incomplete. Some AI requests failed. Please retry."
+  : overall >= 60
+    ? `In this sample, ${brand} was mentioned frequently by the tested models.`
+    : overall >= 25
+      ? `In this sample, ${brand} was mentioned in some AI responses.`
+      : `In this sample, ${brand} was rarely mentioned by the tested models.`;
 
     return Response.json({ domain, brand, category, whatTheySell: info.whatTheySell, isEcommerce: info.isEcommerce, overall, webSoV, memSoV, queriesRun: n, verdict, perQuery, topCompetitors });
   } catch (e) {
