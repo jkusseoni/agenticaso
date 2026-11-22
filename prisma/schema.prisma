@@ -411,3 +411,24 @@ model ReportEmailLead {
   @@index([email, createdAt])
   @@index([status, expiresAt])
 }
+
+/// Estimated external AI spend for one UTC day. Not a provider-account cap.
+model AiProviderSpendDay {
+  day         String   @id
+  spentCalls  Int      @default(0)
+  spentCents  Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-scan estimated spend. Not linked to billing usage or audit rows.
+model AiProviderScanBudget {
+  id         String   @id
+  day        String
+  spentCalls Int      @default(0)
+  spentCents Int      @default(0)
+  maxCalls   Int
+  maxCents   Int
+  createdAt  DateTime @default(now())
+
+  @@index([day])
+}

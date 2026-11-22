@@ -4,7 +4,10 @@
 // Everything else (site identify → 5 queries → Perplexity + GPT → SoV) is unchanged.
 
 import { requireClerkUser } from "@/lib/db/auth-gate";
+import { getPrisma } from "@/lib/db";
 import { safeFetchText } from "@/lib/scan/safe-fetch.js";
+import { aicreditsChat } from "@/lib/ai/aicredits.js";
+import { budgetAuthorizationCode, openProviderScanBudget, providerBudgetStorage, readProviderBudgetConfig, rethrowBudgetAuthorizationError } from "@/lib/ai/provider-budget.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,14 +29,7 @@ function rateLimited(key, maxPerHour = 20) {
 }
 
 async function chat(model, messages, { web = false } = {}) {
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` },
-    body: JSON.stringify({ model, messages, temperature: web ? 0.2 : 0.3, max_tokens: 700 }),
-  });
-  if (!res.ok) { const t = await res.text().catch(() => ""); throw new Error(`${model} ${res.status}: ${t.slice(0, 200)}`); }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "";
+  return aicreditsChat(model, messages, { temperature: web ? 0.2 : 0.3, max_tokens: 700 });
 }
 
 async function siteSignals(url) {
@@ -74,6 +70,18 @@ export async function POST(req) {
     const gate = await requireClerkUser({ requirePaid: true });
     if (!gate.ok) return gate.response;
     const { userId } = gate;
+    const budgetConfig = readProviderBudgetConfig();
+    if (!budgetConfig.ok) {
+      return Response.json({ error: "provider_budget_unverified" }, { status: 503 });
+    }
+    if (!budgetConfig.enabled) {
+      return Response.json({ error: budgetConfig.killed ? "ai_provider_kill_switch" : "ai_execution_disabled" }, { status: 503 });
+    }
+    const opened = await openProviderScanBudget(getPrisma(), budgetConfig);
+    if (!opened.ok) {
+      return Response.json({ error: opened.reason || "provider_budget_unverified" }, { status: 503 });
+    }
+    return await providerBudgetStorage.run(opened.state, async () => {
     if (!BASE || !KEY) return Response.json({ error: "Server not configured." }, { status: 500 });
 
     const body = await req.json().catch(() => ({}));
@@ -84,16 +92,20 @@ export async function POST(req) {
 
     const siteUrl = /^https?:\/\//.test(body.url) ? body.url : `https://${domain}`;
     const sig = await siteSignals(siteUrl);
-    const contentBlob = sig.ok
-      ? `Title: ${sig.title}\nOG Title: ${sig.ogTitle}\nDescription: ${sig.desc}\nH1: ${sig.h1}\nPage text: ${sig.bodyText}`
-      : `(could not fetch site; only the domain is known: ${domain})`;
+    if (!sig.ok) {
+      return Response.json(
+        { error: "Couldn't reach that website. Check the URL and try again." },
+        { status: 422 }
+      );
+    }
+    const contentBlob = `Title: ${sig.title}\nOG Title: ${sig.ogTitle}\nDescription: ${sig.desc}\nH1: ${sig.h1}\nPage text: ${sig.bodyText}`;
 
     const idPrompt = [
       { role: "system", content: "You identify a business from its website content. Return ONLY compact JSON: {\"brand\":\"...\",\"category\":\"...\",\"whatTheySell\":\"...\",\"isEcommerce\":true|false}. category = the product/service niche a shopper would search for. Base it on the ACTUAL content, not the domain spelling." },
       { role: "user", content: `Domain: ${domain}\n\n${contentBlob}\n\nIdentify the brand, its category, what it sells, and whether it's an e-commerce store selling physical products to consumers.` },
     ];
     let info = { brand: domain.split(".")[0], category: "", whatTheySell: "", isEcommerce: true };
-    try { const raw = await chat(GEN_MODEL, idPrompt); info = { ...info, ...JSON.parse(raw.replace(/```json|```/g, "").trim()) }; } catch {}
+    try { const raw = await chat(GEN_MODEL, idPrompt); info = { ...info, ...JSON.parse(raw.replace(/```json|```/g, "").trim()) }; } catch (error) { rethrowBudgetAuthorizationError(error); }
 
     const brand = body.brand || info.brand || domain.split(".")[0];
     const category = info.category || "";
@@ -104,14 +116,17 @@ export async function POST(req) {
     ];
     let queries = [];
     try { const raw = await chat(GEN_MODEL, genPrompt); queries = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-    catch { queries = [`best ${category || brand} in India`, `top ${category || brand} brands`, `where to buy ${category || brand} online`, `${category || brand} reviews`, `affordable ${category || brand}`]; }
+    catch (error) {
+      rethrowBudgetAuthorizationError(error);
+      queries = [`best ${category || brand} in India`, `top ${category || brand} brands`, `where to buy ${category || brand} online`, `${category || brand} reviews`, `affordable ${category || brand}`];
+    }
     queries = queries.filter(Boolean).slice(0, 5);
 
     const perQuery = await Promise.all(
       queries.map(async (q) => {
         const [webAns, memAns] = await Promise.all([
-          chat(SEARCH_MODEL, [{ role: "system", content: "You are a helpful shopping assistant. Recommend specific real brands/stores with brief reasons." }, { role: "user", content: q }], { web: true }).catch((e) => `__ERR__ ${e.message}`),
-          chat(REASON_MODEL, [{ role: "system", content: "You are a shopping assistant. Recommend specific brands you know. Be concrete." }, { role: "user", content: q }]).catch((e) => `__ERR__ ${e.message}`),
+          chat(SEARCH_MODEL, [{ role: "system", content: "You are a helpful shopping assistant. Recommend specific real brands/stores with brief reasons." }, { role: "user", content: q }], { web: true }).catch((e) => { rethrowBudgetAuthorizationError(e); return `__ERR__ ${e.message}`; }),
+          chat(REASON_MODEL, [{ role: "system", content: "You are a shopping assistant. Recommend specific brands you know. Be concrete." }, { role: "user", content: q }]).catch((e) => { rethrowBudgetAuthorizationError(e); return `__ERR__ ${e.message}`; }),
         ]);
         const webOk = !webAns.startsWith("__ERR__") && Boolean(webAns.trim());
 const memOk = !memAns.startsWith("__ERR__") && Boolean(memAns.trim());
@@ -175,7 +190,10 @@ const overall = complete
       : `In this sample, ${brand} was rarely mentioned by the tested models.`;
 
     return Response.json({ domain, brand, category, whatTheySell: info.whatTheySell, isEcommerce: info.isEcommerce, overall, webSoV, memSoV, queriesRun: n, verdict, perQuery, topCompetitors });
+    });
   } catch (e) {
+    const budgetCode = budgetAuthorizationCode(e);
+    if (budgetCode) return Response.json({ error: budgetCode }, { status: 503 });
     console.error("visibility error:", e);
     return Response.json({ error: "Visibility check failed. Try again." }, { status: 500 });
   }
