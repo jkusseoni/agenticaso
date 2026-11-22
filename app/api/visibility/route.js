@@ -8,6 +8,7 @@ import { getPrisma } from "@/lib/db";
 import { safeFetchText } from "@/lib/scan/safe-fetch.js";
 import { aicreditsChat } from "@/lib/ai/aicredits.js";
 import { budgetAuthorizationCode, openProviderScanBudget, providerBudgetStorage, readProviderBudgetConfig, rethrowBudgetAuthorizationError } from "@/lib/ai/provider-budget.js";
+import { rateLimited } from "@/lib/api/rate-limit.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,14 +20,6 @@ const GEN_MODEL = "openai/gpt-4o-mini";
 const SEARCH_MODEL = "perplexity/sonar";
 const REASON_MODEL = "openai/gpt-4o-mini";
 const UA = "Mozilla/5.0 (compatible; AgenticasoBot/1.0; +https://agenticaso.com/bot)";
-
-const HITS = new Map();
-function rateLimited(key, maxPerHour = 20) {
-  const now = Date.now();
-  const arr = (HITS.get(key) || []).filter((t) => now - t < 3600_000);
-  arr.push(now); HITS.set(key, arr);
-  return arr.length > maxPerHour;
-}
 
 async function chat(model, messages, { web = false } = {}) {
   return aicreditsChat(model, messages, { temperature: web ? 0.2 : 0.3, max_tokens: 700 });

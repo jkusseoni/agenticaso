@@ -432,3 +432,11 @@ model AiProviderScanBudget {
 
   @@index([day])
 }
+
+// Raw SQL only — these are not Prisma Client models:
+// VisibilityUsageOperation, VisibilityRecoveryReview,
+// VisibilityRecoveryAdminGrant, VisibilityRecoveryGrantAudit.
+// Their CHECK constraints, foreign keys, and the append-only
+// VisibilityRecoveryGrantAudit trigger must be preserved by hand-written SQL
+// migrations. This comment does not stop `prisma db push` from proposing
+// drops for tables that exist only in the database.
