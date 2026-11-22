@@ -3,7 +3,12 @@
 // metadata (set it manually in the Clerk dashboard after a Razorpay payment).
 // Everything else (site identify → 5 queries → Perplexity + GPT → SoV) is unchanged.
 
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { requireClerkUser } from "@/lib/db/auth-gate";
+import { getPrisma } from "@/lib/db";
+import { safeFetchText } from "@/lib/scan/safe-fetch.js";
+import { aicreditsChat } from "@/lib/ai/aicredits.js";
+import { budgetAuthorizationCode, openProviderScanBudget, providerBudgetStorage, readProviderBudgetConfig, rethrowBudgetAuthorizationError } from "@/lib/ai/provider-budget.js";
+import { rateLimited } from "@/lib/api/rate-limit.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,32 +21,15 @@ const SEARCH_MODEL = "perplexity/sonar";
 const REASON_MODEL = "openai/gpt-4o-mini";
 const UA = "Mozilla/5.0 (compatible; AgenticasoBot/1.0; +https://agenticaso.com/bot)";
 
-const HITS = new Map();
-function rateLimited(key, maxPerHour = 20) {
-  const now = Date.now();
-  const arr = (HITS.get(key) || []).filter((t) => now - t < 3600_000);
-  arr.push(now); HITS.set(key, arr);
-  return arr.length > maxPerHour;
-}
-
 async function chat(model, messages, { web = false } = {}) {
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` },
-    body: JSON.stringify({ model, messages, temperature: web ? 0.2 : 0.3, max_tokens: 700 }),
-  });
-  if (!res.ok) { const t = await res.text().catch(() => ""); throw new Error(`${model} ${res.status}: ${t.slice(0, 200)}`); }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "";
+  return aicreditsChat(model, messages, { temperature: web ? 0.2 : 0.3, max_tokens: 700 });
 }
 
 async function siteSignals(url) {
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": UA } });
-    clearTimeout(t);
-    const html = await res.text();
+    const res = await safeFetchText(url, { timeoutMs: 8000, headers: { "User-Agent": UA } });
+    if (!res.ok) return { ok: false };
+    const html = res.text;
     const pick = (re) => (html.match(re)?.[1] || "").replace(/\s+/g, " ").trim().slice(0, 300);
     const title = pick(/<title[^>]*>([^<]+)<\/title>/i);
     const desc = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i);
@@ -69,15 +57,25 @@ function extractCompetitors(answer, brand) {
 
 export async function POST(req) {
   try {
-    if (!BASE || !KEY) return Response.json({ error: "Server not configured." }, { status: 500 });
+
 
     // ---- GATE: must be logged in AND paid ----
-    const { userId } = await auth();
-    if (!userId) return Response.json({ error: "Please sign in to run an AI-visibility check." }, { status: 401 });
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const isPaid = user?.publicMetadata?.paid === true;
-    if (!isPaid) return Response.json({ error: "This is a Pro feature. Upgrade to unlock AI-visibility checks.", upgrade: true }, { status: 402 });
+    const gate = await requireClerkUser({ requirePaid: true });
+    if (!gate.ok) return gate.response;
+    const { userId } = gate;
+    const budgetConfig = readProviderBudgetConfig();
+    if (!budgetConfig.ok) {
+      return Response.json({ error: "provider_budget_unverified" }, { status: 503 });
+    }
+    if (!budgetConfig.enabled) {
+      return Response.json({ error: budgetConfig.killed ? "ai_provider_kill_switch" : "ai_execution_disabled" }, { status: 503 });
+    }
+    const opened = await openProviderScanBudget(getPrisma(), budgetConfig);
+    if (!opened.ok) {
+      return Response.json({ error: opened.reason || "provider_budget_unverified" }, { status: 503 });
+    }
+    return await providerBudgetStorage.run(opened.state, async () => {
+    if (!BASE || !KEY) return Response.json({ error: "Server not configured." }, { status: 500 });
 
     const body = await req.json().catch(() => ({}));
     const domainRaw = String(body.url || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -87,16 +85,20 @@ export async function POST(req) {
 
     const siteUrl = /^https?:\/\//.test(body.url) ? body.url : `https://${domain}`;
     const sig = await siteSignals(siteUrl);
-    const contentBlob = sig.ok
-      ? `Title: ${sig.title}\nOG Title: ${sig.ogTitle}\nDescription: ${sig.desc}\nH1: ${sig.h1}\nPage text: ${sig.bodyText}`
-      : `(could not fetch site; only the domain is known: ${domain})`;
+    if (!sig.ok) {
+      return Response.json(
+        { error: "Couldn't reach that website. Check the URL and try again." },
+        { status: 422 }
+      );
+    }
+    const contentBlob = `Title: ${sig.title}\nOG Title: ${sig.ogTitle}\nDescription: ${sig.desc}\nH1: ${sig.h1}\nPage text: ${sig.bodyText}`;
 
     const idPrompt = [
       { role: "system", content: "You identify a business from its website content. Return ONLY compact JSON: {\"brand\":\"...\",\"category\":\"...\",\"whatTheySell\":\"...\",\"isEcommerce\":true|false}. category = the product/service niche a shopper would search for. Base it on the ACTUAL content, not the domain spelling." },
       { role: "user", content: `Domain: ${domain}\n\n${contentBlob}\n\nIdentify the brand, its category, what it sells, and whether it's an e-commerce store selling physical products to consumers.` },
     ];
     let info = { brand: domain.split(".")[0], category: "", whatTheySell: "", isEcommerce: true };
-    try { const raw = await chat(GEN_MODEL, idPrompt); info = { ...info, ...JSON.parse(raw.replace(/```json|```/g, "").trim()) }; } catch {}
+    try { const raw = await chat(GEN_MODEL, idPrompt); info = { ...info, ...JSON.parse(raw.replace(/```json|```/g, "").trim()) }; } catch (error) { rethrowBudgetAuthorizationError(error); }
 
     const brand = body.brand || info.brand || domain.split(".")[0];
     const category = info.category || "";
@@ -107,39 +109,84 @@ export async function POST(req) {
     ];
     let queries = [];
     try { const raw = await chat(GEN_MODEL, genPrompt); queries = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-    catch { queries = [`best ${category || brand} in India`, `top ${category || brand} brands`, `where to buy ${category || brand} online`, `${category || brand} reviews`, `affordable ${category || brand}`]; }
+    catch (error) {
+      rethrowBudgetAuthorizationError(error);
+      queries = [`best ${category || brand} in India`, `top ${category || brand} brands`, `where to buy ${category || brand} online`, `${category || brand} reviews`, `affordable ${category || brand}`];
+    }
     queries = queries.filter(Boolean).slice(0, 5);
 
     const perQuery = await Promise.all(
       queries.map(async (q) => {
         const [webAns, memAns] = await Promise.all([
-          chat(SEARCH_MODEL, [{ role: "system", content: "You are a helpful shopping assistant. Recommend specific real brands/stores with brief reasons." }, { role: "user", content: q }], { web: true }).catch((e) => `__ERR__ ${e.message}`),
-          chat(REASON_MODEL, [{ role: "system", content: "You are a shopping assistant. Recommend specific brands you know. Be concrete." }, { role: "user", content: q }]).catch((e) => `__ERR__ ${e.message}`),
+          chat(SEARCH_MODEL, [{ role: "system", content: "You are a helpful shopping assistant. Recommend specific real brands/stores with brief reasons." }, { role: "user", content: q }], { web: true }).catch((e) => { rethrowBudgetAuthorizationError(e); return `__ERR__ ${e.message}`; }),
+          chat(REASON_MODEL, [{ role: "system", content: "You are a shopping assistant. Recommend specific brands you know. Be concrete." }, { role: "user", content: q }]).catch((e) => { rethrowBudgetAuthorizationError(e); return `__ERR__ ${e.message}`; }),
         ]);
-        const webHit = !webAns.startsWith("__ERR__") && mentioned(webAns, brand, domain);
-        const memHit = !memAns.startsWith("__ERR__") && mentioned(memAns, brand, domain);
-        return { query: q, webMentioned: webHit, memMentioned: memHit, competitors: webAns.startsWith("__ERR__") ? [] : extractCompetitors(webAns, brand) };
+        const webOk = !webAns.startsWith("__ERR__") && Boolean(webAns.trim());
+const memOk = !memAns.startsWith("__ERR__") && Boolean(memAns.trim());
+
+const webHit = webOk ? mentioned(webAns, brand, domain) : null;
+const memHit = memOk ? mentioned(memAns, brand, domain) : null;
+
+        return {
+          query: q,
+          webMentioned: webHit,
+          memMentioned: memHit,
+          competitors: webOk ? extractCompetitors(webAns, brand) : [],
+        };
       })
     );
 
-    const n = perQuery.length || 1;
-    const webCount = perQuery.filter((x) => x.webMentioned).length;
-    const memCount = perQuery.filter((x) => x.memMentioned).length;
-    const webSoV = Math.round((webCount / n) * 100);
-    const memSoV = Math.round((memCount / n) * 100);
-    const overall = Math.round(webSoV * 0.7 + memSoV * 0.3);
+    const n = perQuery.length;
+
+
+const webValid = perQuery.filter(
+  (x) => x.webMentioned !== null
+);
+const memValid = perQuery.filter(
+  (x) => x.memMentioned !== null
+);
+
+const webCount = webValid.filter(
+  (x) => x.webMentioned === true
+).length;
+const memCount = memValid.filter(
+  (x) => x.memMentioned === true
+).length;
+
+const webSoV = webValid.length
+  ? Math.round((webCount / webValid.length) * 100)
+  : null;
+
+const memSoV = memValid.length
+  ? Math.round((memCount / memValid.length) * 100)
+  : null;
+
+const complete =
+  n > 0 &&
+  webValid.length === n &&
+  memValid.length === n;
+
+const overall = complete
+  ? Math.round(webSoV * 0.7 + memSoV * 0.3)
+  : null;
 
     const compCount = {};
     perQuery.forEach((x) => x.competitors.forEach((c) => { compCount[c] = (compCount[c] || 0) + 1; }));
     const topCompetitors = Object.entries(compCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, hits]) => ({ name, hits }));
 
-    const verdict =
-      overall >= 60 ? `AI assistants recommend ${brand} in most buyer searches — strong agentic visibility.` :
-      overall >= 25 ? `AI assistants mention ${brand} sometimes, but often pick competitors first.` :
-      `AI assistants almost never recommend ${brand} — you're invisible in agentic shopping right now.`;
+    const verdict = !complete
+  ? "AI visibility check is incomplete. Some AI requests failed. Please retry."
+  : overall >= 60
+    ? `In this sample, ${brand} was mentioned frequently by the tested models.`
+    : overall >= 25
+      ? `In this sample, ${brand} was mentioned in some AI responses.`
+      : `In this sample, ${brand} was rarely mentioned by the tested models.`;
 
     return Response.json({ domain, brand, category, whatTheySell: info.whatTheySell, isEcommerce: info.isEcommerce, overall, webSoV, memSoV, queriesRun: n, verdict, perQuery, topCompetitors });
+    });
   } catch (e) {
+    const budgetCode = budgetAuthorizationCode(e);
+    if (budgetCode) return Response.json({ error: budgetCode }, { status: 503 });
     console.error("visibility error:", e);
     return Response.json({ error: "Visibility check failed. Try again." }, { status: 500 });
   }

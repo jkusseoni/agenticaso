@@ -384,3 +384,59 @@ model McpRateBucket {
   @@unique([workspaceId, action, windowStart])
   @@index([workspaceId, action])
 }
+
+enum LeadVerificationStatus {
+  pending
+  processing
+  verified
+  failed
+  expired
+}
+
+
+model ReportEmailLead {
+  id                  String                 @id @default(cuid())
+  email               String
+  websiteUrl          String
+  verificationHash    String                 @unique
+  status              LeadVerificationStatus @default(pending)
+  expiresAt           DateTime
+  verifiedAt          DateTime?
+  processingStartedAt DateTime?
+  attemptCount        Int                    @default(0)
+  reportSentAt        DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([email, createdAt])
+  @@index([status, expiresAt])
+}
+
+/// Estimated external AI spend for one UTC day. Not a provider-account cap.
+model AiProviderSpendDay {
+  day         String   @id
+  spentCalls  Int      @default(0)
+  spentCents  Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+/// Per-scan estimated spend. Not linked to billing usage or audit rows.
+model AiProviderScanBudget {
+  id         String   @id
+  day        String
+  spentCalls Int      @default(0)
+  spentCents Int      @default(0)
+  maxCalls   Int
+  maxCents   Int
+  createdAt  DateTime @default(now())
+
+  @@index([day])
+}
+
+// Raw SQL only — these are not Prisma Client models:
+// VisibilityUsageOperation, VisibilityRecoveryReview,
+// VisibilityRecoveryAdminGrant, VisibilityRecoveryGrantAudit.
+// Their CHECK constraints, foreign keys, and the append-only
+// VisibilityRecoveryGrantAudit trigger must be preserved by hand-written SQL
+// migrations. This comment does not stop `prisma db push` from proposing
+// drops for tables that exist only in the database.
